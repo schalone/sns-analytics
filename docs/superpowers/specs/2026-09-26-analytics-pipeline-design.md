@@ -244,7 +244,7 @@ Out of scope for all phases unless re-decided: Shopify (no reporting access), co
 | Warehouse | BigQuery, US multi-region | GA4 export and archive already there; existing SAs, Run, Scheduler |
 | CMS data path | authenticated export API | no DB exposed; Umbraco content resolved by typed models; ships as a normal release |
 | GA4 source | raw export, own sessions model | full history; no paid-license dependency; Superform untouched |
-| Transform tool | dbt-core in the same container | one repo, runs locally with ADC, tests built in; Dataform would need a second git integration |
+| Transform tool | dbt-core in the same container (chosen over Dataform, 2026-09-26) | one repo and one job so ordering is trivial; runs locally with ADC; schema, data and unit tests; dbt-utils and dbt-ga4 ecosystem. Dataform is native and free but would split transforms into a second scheduled system and lacks unit tests |
 | Search Console | API loader for both properties | bulk export is one property per project and has no history |
 | Google Ads | native BigQuery transfer | free, no code, backfill |
 | Meta / Pinterest spend | CSV drop now, API in phase two | no API access set up yet; don't block ROI reporting on it |
