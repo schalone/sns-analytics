@@ -136,9 +136,9 @@ One read-only controller, `Controllers/AnalyticsExportController.cs`, route `GET
 
 | Entity | Fields |
 |---|---|
-| `orders` | orderKey, orderNumber, status, createdAt, paidAt, updatedAt, currency, subtotalCents, discountCents, serviceFeeCents, giftCardAmountCents, totalCents, promoCode, affiliateKey, memberKey, customerHash, billingCity, billingState, billingZip, checkoutSessionKey, stripeCheckoutSessionId, stripePaymentIntentId, source (`webapp` \| `wordpressImport`), wordpressOrderId |
+| `orders` | orderKey, orderNumber, status, createdAt, paidAt, updatedAt, currency, subtotalCents, discountCents, serviceFeeCents, giftCardAmountCents, totalCents, promoCode, affiliateKey, memberKey, customerHash, billingCity, billingState, billingZip, checkoutSessionKey, stripeCheckoutSessionId, source (`webapp` \| `wordpressImport`), wordpressOrderId. (The payment intent id is not stored on orders; Stripe reconciliation joins on the order GUID in Stripe metadata.) |
 | `order_items` | orderItemKey, orderKey, itemType (`ticket` \| `giftCard` \| `adHoc` \| `other`), eventKey, ticketTypeKey, quantity, unitPriceCents, lineTotalCents, updatedAt |
-| `tickets` | ticketKey, orderKey, orderItemKey, eventKey, status (Paid/Used/Held/Pending/Refunded/Expired/Transferred), transferredFromTicketKey, createdAt, updatedAt |
+| `tickets` | ticketKey, orderKey (null for tickets whose checkout never became an order), orderItemKey, eventKey, status (Paid/Used/Held/Pending/Refunded/Expired/Transferred), transferredFromTicketKey, createdAt, updatedAt |
 | `refunds` | refundKey, orderKey, amountCents, reason, status, stripeRefundId, createdAt, updatedAt |
 | `promo_redemptions` | redemptionKey, orderKey, promoCode, discountCents, redeemedAt, updatedAt |
 | `gift_cards` | giftCardKey, orderKey, initialCents, balanceCents, status, createdAt, updatedAt |
@@ -149,7 +149,7 @@ One read-only controller, `Controllers/AnalyticsExportController.cs`, route `GET
 | `metros` | metroKey, name, slug, state, centerLatitude, centerLongitude, radiusMiles, status, updatedAt |
 | `instructors` | instructorKey, name, urlPath, city, state, startDate, status, updatedAt |
 
-`updatedAt` is mandatory on every entity. Where an `sns` table has no updated-at column today, the implementation adds one by migration, set by the service on every write. Umbraco entities use the content `UpdateDate`. `startTime`/`endTime` are time-only per the repo rule; `eventDate` is the date.
+`updatedAt` is mandatory on every entity. Orders, order items, tickets, checkout sessions, promo redemptions and gift cards have an `UpdatedAt` column; refunds use `COALESCE(CompletedAt, CreatedAt)`; gift card transactions are immutable and use `CreatedAt`. No schema migration is needed. Umbraco entities use the content `UpdateDate`. `startTime`/`endTime` are time-only per the repo rule; `eventDate` is the date.
 
 Events, venues, metros and instructors are read through the typed Umbraco models (published content only). The export runs inside the app's existing request pipeline; pages are capped so a full backfill of 4k events or 6k orders is a few dozen requests.
 
