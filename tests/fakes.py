@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import collections
 
+from google.api_core import exceptions
+
 
 class _Job:
     def __init__(self, rows): self.rows = rows
@@ -18,9 +20,9 @@ class FakeBqClient:
         self.query_results = collections.deque()
 
     # datasets / tables
-    def get_dataset(self, ref): raise _NotFound(ref)
+    def get_dataset(self, ref): raise exceptions.NotFound(f"Not found: {ref}")
     def create_dataset(self, ds, exists_ok=False): self.created_datasets.append((ds.dataset_id, ds.location)); return ds
-    def get_table(self, ref): raise _NotFound(ref)
+    def get_table(self, ref): raise exceptions.NotFound(f"Not found: {ref}")
     def create_table(self, table, exists_ok=False): self.created_tables.append(table); return table
 
     # loads
@@ -32,10 +34,6 @@ class FakeBqClient:
         params = {p.name: p.value for p in (job_config.query_parameters if job_config else [])}
         self.queries.append((sql, params))
         return _Job(self.query_results.popleft() if self.query_results else [])
-
-
-class _NotFound(Exception):
-    pass
 
 
 class FakeBucketBlob:

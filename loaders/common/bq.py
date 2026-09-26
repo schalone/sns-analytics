@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from google.api_core import exceptions
 from google.cloud import bigquery
 
 RAW_SCHEMA = [
@@ -32,7 +33,7 @@ class RawWriter:
         ref = bigquery.Dataset(f"{self.project}.{dataset}"); ref.location = self.location
         try:
             self.client.get_dataset(ref)
-        except Exception:
+        except exceptions.NotFound:
             self.client.create_dataset(ref, exists_ok=True)
 
     def ensure_table(self, dataset: str, entity: str) -> None:
@@ -40,7 +41,7 @@ class RawWriter:
         try:
             self.client.get_table(table_id)
             return
-        except Exception:
+        except exceptions.NotFound:
             pass
         table = bigquery.Table(table_id, schema=RAW_SCHEMA)
         table.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field="_loaded_at")

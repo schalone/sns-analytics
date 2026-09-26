@@ -1,6 +1,9 @@
 import datetime as dt
 import json
 
+import pytest
+from google.api_core import exceptions
+
 from loaders.common.bq import RawRow, RawWriter, RAW_SCHEMA
 from tests.fakes import FakeBqClient
 
@@ -32,3 +35,11 @@ def test_append_serialises_rows_and_returns_count():
 def test_append_empty_is_noop():
     c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
     assert w.append("raw_cms", "orders", []) == 0 and c.loads == []
+
+
+def test_ensure_table_propagates_non_notfound_errors():
+    c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
+    c.get_table = lambda ref: (_ for _ in ()).throw(exceptions.Forbidden("nope"))
+    with pytest.raises(exceptions.Forbidden, match="nope"):
+        w.ensure_table("raw_cms", "orders")
+    assert c.created_tables == []
