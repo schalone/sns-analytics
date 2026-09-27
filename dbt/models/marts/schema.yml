@@ -127,6 +127,7 @@ models:
               arguments:
                 values: [legacy_event_tickets, bronco]
       - name: cms_orders
+        description: Count of core_orders rows on this business_date, both eras (the name is kept from when this mart covered only the webapp; in the legacy era it counts archive orders).
         data_tests: [not_null]
       - name: paid_orders
         description: Orders with gross_revenue > 0, by the order's own business_date.
@@ -135,6 +136,7 @@ models:
         description: Sum of gross_revenue of orders on this business_date.
         data_tests: [not_null]
       - name: cms_net_revenue
+        description: Sum of net_revenue (gross less refunds, refunds dated by the order's own date, not the refund's). Kept for continuity; see orders_charged_amount and orders_refunded_amount for the columns dated correctly on each side.
         data_tests: [not_null]
       - name: orders_matched_to_stripe
         description: Paid orders on this business_date with at least one Stripe transaction whose source_object is 'charge'.
