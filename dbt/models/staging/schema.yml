@@ -116,10 +116,22 @@ models:
       - name: woo_venue_id
         data_tests: [unique, not_null]
 
+  - name: stg_woo__organizers
+    columns:
+      - name: woo_organizer_id
+        data_tests: [unique, not_null]
+
   - name: stg_stripe__balance_transactions
     columns:
       - name: txn_id
         data_tests: [unique, not_null]
+      - name: type
+        data_tests: [not_null]
+      - name: customer_hash
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "is null or regexp_contains(customer_hash, r'^[0-9a-f]{64}$')"
 
   - name: stg_stripe__refunds
     columns:

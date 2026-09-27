@@ -9,10 +9,12 @@
 --   like "...Gift Card Lettering for Beginners at Principles Bk" (which does have
 --   tribe_wooticket_for_event set) is still classified as a ticket, not a gift card.
 select cast(id as string) as woo_product_id, name, type, cast(venue_id as string) as woo_venue_id,
+  cast(tribe_wooticket_for_event as string) as woo_event_id,
+  cast(ticket_capacity as int64) as ticket_capacity,
+  regular_price,
   case
     when tribe_wooticket_for_event is not null then 'ticket'
     when lower(name) like '%gift card%' or lower(name) like '%gift certificate%' then 'gift_card'
     else 'materials'
-  end as product_kind,
-  cast(tribe_wooticket_for_event as string) as woo_event_id
+  end as product_kind
 from {{ source('woo', 'products') }}
