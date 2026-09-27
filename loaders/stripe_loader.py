@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Mapping
 
 from loaders.common.bq import RawRow, RawWriter
 from loaders.common.config import RAW_STRIPE, Settings
@@ -13,6 +14,24 @@ EXPAND = {"balance_transactions": ["data.source"]}
 BACKFILL_FROM = dt.datetime(2026, 6, 19, tzinfo=dt.timezone.utc)   # earlier history is WooCommerce, already archived
 OVERLAP = dt.timedelta(days=1)
 SOURCE = "stripe"
+
+
+def _plain(value):
+    """Recursively convert a Stripe SDK object (or any nested value) to plain JSON-ready Python.
+
+    Real stripe-python StripeObjects are not Mapping/dict instances in this SDK version, so they
+    are converted via their public `to_dict()` (which itself recurses), then walked again here to
+    normalise any remaining Mapping/list wrapping. No private SDK method (`_to_dict_recursive`) is
+    ever called.
+    """
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return _plain(to_dict())
+    return value
 
 
 def load_stripe(settings: Settings, writer: RawWriter, state: LoadState, full: bool = False, api=None) -> list[StepResult]:
@@ -34,7 +53,7 @@ def load_stripe(settings: Settings, writer: RawWriter, state: LoadState, full: b
             batch, total, newest = [], 0, None
             for obj in resource.list(**kw).auto_paging_iter():
                 created = dt.datetime.fromtimestamp(int(obj["created"]), tz=dt.timezone.utc)
-                batch.append(RawRow(obj["id"], created, obj.to_dict_recursive()))
+                batch.append(RawRow(obj["id"], created, _plain(obj)))
                 newest = created if newest is None or created > newest else newest
                 if len(batch) >= 5000:
                     total += writer.append(RAW_STRIPE, entity, batch); batch = []

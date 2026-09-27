@@ -1,4 +1,7 @@
 import datetime as dt
+import json
+
+import stripe
 
 from loaders.common.bq import RawWriter
 from loaders.common.config import Settings
@@ -7,13 +10,6 @@ from loaders.stripe_loader import BACKFILL_FROM, OVERLAP, load_stripe
 from tests.fakes import FakeBqClient
 
 UTC = dt.timezone.utc
-
-
-class _Obj(dict):
-    """Stripe objects behave like dicts with .id and to_dict()."""
-    @property
-    def id(self): return self["id"]
-    def to_dict_recursive(self): return dict(self)
 
 
 class _Resource:
@@ -28,8 +24,17 @@ class _Resource:
 
 class FakeStripe:
     def __init__(self):
-        self.BalanceTransaction = _Resource([_Obj(id="txn_1", created=1790336000, type="charge", amount=13600, fee=425, net=13175, source=_Obj(id="ch_1", metadata={"OrderGuid": "1111"}))])
-        self.Refund = _Resource([_Obj(id="re_1", created=1758803600, amount=6800, status="succeeded")])
+        # Real stripe-python objects (constructed locally, no network call) so serialisation is
+        # exercised against the actual SDK shape rather than a hand-rolled dict stand-in.
+        txn = stripe.BalanceTransaction.construct_from({
+            "id": "txn_1", "created": 1790336000, "type": "charge", "amount": 13600, "fee": 425, "net": 13175,
+            "source": {"id": "ch_1", "object": "charge", "metadata": {"OrderGuid": "1111"}},
+        }, "sk_test_x")
+        refund = stripe.Refund.construct_from({
+            "id": "re_1", "created": 1758803600, "amount": 6800, "status": "succeeded",
+        }, "sk_test_x")
+        self.BalanceTransaction = _Resource([txn])
+        self.Refund = _Resource([refund])
         self.Dispute = _Resource([]); self.Payout = _Resource([])
 
 
@@ -43,6 +48,9 @@ def test_full_backfill_starts_at_launch_and_expands_source():
     assert api.BalanceTransaction.calls[0] == {"limit": 100, "created": {"gte": int(BACKFILL_FROM.timestamp())}, "expand": ["data.source"]}
     dest, rows = [l for l in bq.loads if l[0].endswith("raw_stripe.balance_transactions")][0]
     assert rows[0]["key"] == "txn_1" and rows[0]["updated_at"] == "2026-09-25T11:33:20+00:00"
+    payload = json.loads(rows[0]["payload"])
+    assert isinstance(payload, dict) and isinstance(payload["source"], dict)
+    assert payload["source"]["metadata"]["OrderGuid"] == "1111"
 
 
 def test_incremental_uses_watermark_minus_overlap():

@@ -26,6 +26,22 @@ def test_parse_csv_missing_column_raises():
         parse_csv("meta", "f.csv", "Day,Campaign name,Amount spent (USD),Impressions\n2026-09-25,x,1,2\n", generation=1)
 
 
+def test_parse_csv_strips_leading_bom():
+    rows = parse_csv("meta", "spend/meta/sep.csv", "﻿" + META, generation=17)
+    assert len(rows) == 1
+    assert rows[0].payload["date"] == "2026-09-25" and rows[0].payload["campaign_name"] == "SNS | Paid Social | Dallas"
+
+
+def test_parse_csv_tolerates_currency_symbols_and_thousands_separators():
+    text = ("Day,Campaign name,Amount spent (USD),Impressions,Link clicks\n"
+            '2026-09-25,SNS | Paid Social | Dallas,"$1,234.56","12,000","1,050"\n')
+    rows = parse_csv("meta", "spend/meta/sep.csv", text, generation=17)
+    assert len(rows) == 1
+    assert rows[0].payload["spend"] == 1234.56
+    assert rows[0].payload["impressions"] == 12000
+    assert rows[0].payload["clicks"] == 1050
+
+
 def test_spend_skip_same_generation_reload_new_generation():
     bq = FakeBqClient(); s = Settings.from_env({"CMS_BASE_URL": "x"})
     blobs = [FakeBucketBlob("spend/meta/sep.csv", 17, META), FakeBucketBlob("spend/pinterest/sep.csv", 5, PIN)]

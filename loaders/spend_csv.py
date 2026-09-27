@@ -5,6 +5,7 @@ import csv
 import datetime as dt
 import hashlib
 import io
+import re
 
 from loaders.common.bq import RawRow, RawWriter
 from loaders.common.config import RAW_SPEND, Settings
@@ -20,13 +21,25 @@ HEADER_MAP = {
     "link clicks": "clicks", "clicks (all)": "clicks", "pin clicks": "clicks", "clicks": "clicks",
 }
 SOURCE = "spend"
+BOM = "﻿"
 
 
 def normalise_header(h: str) -> str:
-    return HEADER_MAP.get(h.strip().lower(), h.strip().lower().replace(" ", "_"))
+    h = h.replace(BOM, "").strip().lower()
+    return HEADER_MAP.get(h, h.replace(" ", "_"))
+
+
+def _num(s: str) -> float:
+    """Tolerant numeric parse: strip everything but digits, '.' and a leading '-' (currency
+    symbols, thousands separators, stray text); empty result parses as 0.0."""
+    cleaned = re.sub(r"[^0-9.\-]", "", s or "")
+    if cleaned in ("", "-", ".", "-."):
+        return 0.0
+    return float(cleaned)
 
 
 def parse_csv(platform: str, object_name: str, text: str, generation: int) -> list[RawRow]:
+    text = text.replace(BOM, "")   # Excel/Ads-Manager exports are often UTF-8-with-BOM
     reader = csv.DictReader(io.StringIO(text))
     headers = [normalise_header(h) for h in reader.fieldnames or []]
     missing = REQUIRED - set(headers)
@@ -41,8 +54,8 @@ def parse_csv(platform: str, object_name: str, text: str, generation: int) -> li
         rows.append(RawRow(
             hashlib.sha1(f"{platform}|{rec['date']}|{rec['campaign_name']}".encode()).hexdigest(), updated_at,
             {"platform": platform, "file": object_name, "date": rec["date"], "campaign_name": rec["campaign_name"],
-             "spend": float(rec["spend"].replace(",", "") or 0), "impressions": int(float(rec["impressions"].replace(",", "") or 0)),
-             "clicks": int(float(rec["clicks"].replace(",", "") or 0))}))
+             "spend": _num(rec["spend"]), "impressions": int(_num(rec["impressions"])),
+             "clicks": int(_num(rec["clicks"]))}))
     return rows
 
 
