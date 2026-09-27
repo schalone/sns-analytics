@@ -50,7 +50,17 @@ unioned as (
   union all
   select * from csv
 )
+-- Fix round 1, finding 3: `campaign_name like concat(pattern, '%')` can match more than one
+-- pattern when one is a prefix of another (e.g. a metro pattern and a broader catch-all pattern
+-- both matching the same campaign_name), fanning a single spend row out into duplicates. Keep at
+-- most one match per spend row -- the longest (most specific) matching pattern -- via `qualify`.
+-- Rows with no match at all still pass through once (the left join yields exactly one NULL-metro
+-- row for them, so `qualify` keeps it regardless of ordering). Partitioning by `campaign_id` too
+-- (rather than just date/platform/campaign_name) is harmless for CSV spend rows, whose
+-- `campaign_id` is always NULL: BigQuery's window functions treat NULL as an ordinary, consistent
+-- partition-key value, so a NULL-campaign_id spend row is still its own single-row partition.
 select u.*, m.metro_slug, mk.metro_key
 from unioned u
 left join {{ ref('campaign_metro_map') }} m on u.campaign_name like concat(m.campaign_name_pattern, '%')
 left join {{ ref('core_metros') }} mk on mk.slug = m.metro_slug
+qualify row_number() over (partition by u.date, u.platform, u.campaign_id, u.campaign_name order by length(m.campaign_name_pattern) desc) = 1

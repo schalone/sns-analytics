@@ -3,9 +3,15 @@ with cms as (
   select business_date, count(*) as cms_orders, sum(net_revenue) as cms_net_revenue
   from {{ ref('core_orders') }} where source_system = 'webapp' group by 1
 ),
+-- Fix round 1, finding 4: Stripe records a completed payment as balance transaction type `charge`
+-- or `payment` depending on which API created it (Charges API vs. PaymentIntents API), and a
+-- refund of either as `refund` or `payment_refund`. Both spellings on each side are counted so
+-- reconciliation doesn't silently under-count PaymentIntents-based charges/refunds as missing.
+-- The actual type strings must be confirmed against core.core_stripe_transactions once the first
+-- real Stripe load lands (raw_stripe is empty today).
 stripe as (
-  select business_date, countif(type = 'charge') as stripe_charges, sum(net) as stripe_net, sum(fee) as stripe_fees,
-    sum(case when type = 'charge' then amount else 0 end) + sum(case when type in ('refund', 'payment_refund') then amount else 0 end) as stripe_gross_less_refunds
+  select business_date, countif(type in ('charge', 'payment')) as stripe_charges, sum(net) as stripe_net, sum(fee) as stripe_fees,
+    sum(case when type in ('charge', 'payment') then amount else 0 end) + sum(case when type in ('refund', 'payment_refund') then amount else 0 end) as stripe_gross_less_refunds
   from {{ ref('core_stripe_transactions') }} group by 1
 )
 select coalesce(c.business_date, s.business_date) as business_date,

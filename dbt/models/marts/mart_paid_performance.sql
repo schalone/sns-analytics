@@ -5,11 +5,17 @@
 -- (`s.google_ads_campaign_id`), which core_ad_spend never has spend rows for while the var is
 -- false, so no Google rows reach the final output either way (driven from core_ad_spend).
 with google_click_stats as (
+  -- Fix round 1, finding 2: click_view_gclid is not unique in the real ClickStats table (the same
+  -- gclid can recur across several days/campaigns); dedup to one row per gclid before joining to
+  -- sessions, else the join would fan a single session out into duplicates and inflate
+  -- sessions/orders/revenue. `segments_date` is carried through so the dedup can order on it. The
+  -- empty (var-false) branch keeps the exact same column list and types as the real branch.
   {% if var('google_ads_enabled') %}
-  select click_view_gclid, campaign_id
+  select click_view_gclid, campaign_id, segments_date
   from {{ source('google_ads', 'click_stats') }}
+  qualify row_number() over (partition by click_view_gclid order by segments_date desc, campaign_id) = 1
   {% else %}
-  select cast(null as string) as click_view_gclid, cast(null as int64) as campaign_id
+  select cast(null as string) as click_view_gclid, cast(null as int64) as campaign_id, cast(null as date) as segments_date
   limit 0
   {% endif %}
 ),
@@ -21,8 +27,11 @@ google_sessions as (
   where s.gclid is not null or s.google_ads_campaign_id is not null
 ),
 social_sessions as (
-  select session_key, session_date, campaign as campaign_name, case when lower(source) like '%pinterest%' then 'pinterest' else 'meta' end as platform
-  from {{ ref('core_sessions') }} where default_channel_group = 'Paid Social'
+  -- Fix round 1, finding 5: sessions with no campaign can never match a spend row's campaign_name
+  -- and would otherwise sit in social_agg as a NULL-campaign group, silently absorbing organic
+  -- Paid-Social sessions into nothing; excluded here rather than left to fall out of the join.
+  select session_key, session_date, lower(trim(campaign)) as campaign_name_norm, case when lower(source) like '%pinterest%' then 'pinterest' else 'meta' end as platform
+  from {{ ref('core_sessions') }} where default_channel_group = 'Paid Social' and campaign is not null
 ),
 orders_by_session as (
   select so.session_key, o.business_date, count(*) as orders, sum(o.seats) as seats, sum(o.net_revenue) as net_revenue
@@ -33,7 +42,10 @@ google_agg as (
   from google_sessions gs left join orders_by_session ob using (session_key) group by 1, 2, 3
 ),
 social_agg as (
-  select ss.session_date as date, ss.platform, ss.campaign_name, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue
+  -- Fix round 1, finding 5: grouped and joined on the normalised (lower/trim) campaign name so
+  -- the grain stays unique and matches spend rows regardless of case/whitespace differences
+  -- between GA4's utm campaign param and the CSV drop's campaign_name.
+  select ss.session_date as date, ss.platform, ss.campaign_name_norm, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue
   from social_sessions ss left join orders_by_session ob using (session_key) group by 1, 2, 3
 )
 select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.metro_key, sp.spend, sp.impressions, sp.clicks,
@@ -43,4 +55,4 @@ select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.metro_key, sp.
   safe_divide(sp.spend, nullif(coalesce(g.orders, so.orders, 0), 0)) as cpa
 from {{ ref('core_ad_spend') }} sp
 left join google_agg g on sp.platform = 'google' and g.date = sp.date and g.campaign_id = sp.campaign_id
-left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform and so.campaign_name = sp.campaign_name
+left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform and so.campaign_name_norm = lower(trim(sp.campaign_name))

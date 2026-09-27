@@ -53,6 +53,10 @@ models:
     columns:
       - name: spend
         data_tests: [not_null]
+      - name: impressions
+        data_tests: [not_null]
+      - name: clicks
+        data_tests: [not_null]
       - name: sessions
         data_tests: [not_null]
       - name: orders
