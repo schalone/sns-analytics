@@ -153,25 +153,35 @@ unit_tests:
         - {order_item_key: "woo-li-1", event_key: "eeeeeeee-0000-0000-0000-000000000001", platform_era: legacy_event_tickets}
 
   - name: order_item_economics_bronco_split
-    description: Order-level discount, service fee and Stripe fee are split across items by line value; 60/40 applies after the fee.
+    description: >
+      Order-level discount, service fee and Stripe fee are split across items by line value; 60/40
+      applies after the fee. A bronco item's cancellation is decided by its own ticket status alone:
+      order F below is fully refunded by amount (a Succeeded CMS refund equal to the line value) but
+      its ticket is Active, so the item is not cancelled and keeps its 60/40 split on the resulting
+      negative net.
     model: core_order_item_economics
     given:
       - input: ref('stg_cms__orders')
         rows:
           - {order_key: A, source: webapp, status: Paid, created_at: "2026-09-10 14:00:00", paid_at: "2026-09-10 14:01:00", subtotal: 130, discount: 10, service_fee: 6, total: 126}
+          - {order_key: F, source: webapp, status: Refunded, created_at: "2026-09-11 14:00:00", paid_at: "2026-09-11 14:01:00", subtotal: 50, discount: 0, service_fee: 0, total: 50}
       - input: ref('stg_cms__order_items')
         rows:
           - {order_item_key: A1, order_key: A, item_type: ticket, ticket_key: T1, event_key: E1, quantity: 1, line_total: 65}
           - {order_item_key: A2, order_key: A, item_type: ticket, ticket_key: T2, event_key: E1, quantity: 1, line_total: 65}
+          - {order_item_key: F1, order_key: F, item_type: ticket, ticket_key: TF1, event_key: E1, quantity: 1, line_total: 50}
       - input: ref('stg_cms__refunds')
-        rows: []
+        rows:
+          - {refund_key: RF1, order_key: F, amount: 50, status: Succeeded}
       - input: ref('stg_cms__tickets')
         rows:
           - {ticket_key: T1, status: Paid}
           - {ticket_key: T2, status: Used}
+          - {ticket_key: TF1, status: Active}
       - input: ref('core_stripe_transactions')
         rows:
           - {txn_id: t1, type: charge, source_object: charge, order_key: A, amount: 126, fee: 4, net: 122}
+          - {txn_id: t2, type: charge, source_object: charge, order_key: F, amount: 50, fee: 1.75, net: 48.25}
       - input: ref('stg_woo__orders')
         rows: []
       - input: ref('stg_woo__order_line_items')
@@ -184,6 +194,7 @@ unit_tests:
       rows:
         - {order_item_key: A1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
         - {order_item_key: A2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
+        - {order_item_key: F1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-11", seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 50, processing_fee: 1.75, fee_source: actual, net_distributable: -1.75, sns_share: -0.7, instructor_share: -1.05, is_cancelled: false}
 
   - name: order_item_economics_zero_value_order
     description: Review focus 2. A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
@@ -218,15 +229,15 @@ unit_tests:
   - name: order_item_economics_legacy
     description: >
       Legacy line totals are already net of discount. An unmatched order gets an estimated fee. A refunded order
-      keeps the Stripe fee as a loss, split 60/40. A partly refunded bronco order cancels only the refunded ticket.
-      Controller decision 3: CMS refunds count only when status = 'Succeeded' (R1 below; the brief's original
-      'Completed' is not a real CMS refund status per core_orders.sql's ruling). Controller decision 4 / addendum:
-      a third bronco item P3, on a ticket with status Transferred, proves the "any other status" branch of the
-      seat rule cancels the item; P3's line_total is 0 so it does not change the split (and hence the expected
-      values) for P1/P2. All expected rows in this test share one 17-key column set (Controller decision 5): dbt's
-      unit-test compiler derives the comparison column set from the first expected row and every row must supply
-      it, so P1/P2/P3 (bronco) and woo-li-3 (legacy) carry item_kind/event_key/list_value/discount/service_fee
-      too, computed by hand from the rules (see task-6-report.md for the arithmetic).
+      with a matched Stripe refund keeps the Stripe fee as a loss, split 60/40. A partly refunded bronco order
+      cancels only the ticket whose own status says so (P1's refund, not its amount, is what cancels it) --
+      CMS refunds only count when status = 'Succeeded' ('Completed' is not a real CMS refund status). A third
+      bronco item, P3, on a ticket with status Transferred, proves the "any other status" branch of the seat
+      rule cancels the item on its own; P3's line_total is 0 so it does not change the split (and hence the
+      expected values) for P1/P2. dbt's unit-test compiler derives the comparison column set from the first
+      expected row and every row must supply it, so all expected rows here share one column set: P1/P2/P3
+      (bronco) and woo-li-3 (legacy) carry item_kind/event_key/list_value/discount/service_fee too, computed
+      by hand from the rules.
     model: core_order_item_economics
     given:
       - input: ref('stg_cms__orders')
@@ -282,6 +293,61 @@ unit_tests:
         - {order_item_key: "woo-li-1", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 2, list_value: 60, discount: 10, service_fee: 0, realized_revenue: 50, refunded_amount: 0, processing_fee: 1.75, fee_source: estimated, net_distributable: 48.25, sns_share: 19.3, instructor_share: 28.95, is_cancelled: false}
         - {order_item_key: "woo-li-2", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 40, discount: 0, service_fee: 0, realized_revenue: 40, refunded_amount: 40, processing_fee: 1.46, fee_source: actual, net_distributable: -1.46, sns_share: -0.584, instructor_share: -0.876, is_cancelled: true}
         - {order_item_key: "woo-li-3", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 30, discount: 0, service_fee: 0, realized_revenue: 30, refunded_amount: 30, processing_fee: 1.17, fee_source: estimated, net_distributable: -1.17, sns_share: -0.468, instructor_share: -0.702, is_cancelled: true}
+
+  - name: order_item_economics_legacy_zero_total_and_multi_line
+    description: >
+      A legacy line's realized revenue is always its own archive line_total, never the order's total: order
+      Z1 has a WooCommerce total of 0 but real line value (paid by gift card, credit or voucher), so its
+      items keep their full realized revenue, pay no fee (no card payment, so fee_source is 'none'), and are
+      not cancelled. Order Z2 has the same shape but status 'refunded' with no matched Stripe refund, so each
+      of its items refunds its OWN realized revenue in full (not a share of the unreliable order total) and
+      is cancelled. Order M1 has a matched Stripe charge and a partial Stripe refund, split across its two
+      lines by weight, same as before. Order S1's single line has subtotal below its own line_total (an
+      archive data quirk); list_value takes the larger of the two so realized revenue is still exactly the
+      line_total and discount is never negative.
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows: []
+      - input: ref('stg_cms__order_items')
+        rows: []
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_cms__tickets')
+        rows: []
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, order_key: "woo-m1", amount: 100, fee: 3.2, net: 96.8}
+          - {txn_id: t2, type: refund, source_object: refund, order_key: "woo-m1", amount: -20, fee: 0, net: -20}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-z1", status: completed, created_at: "2024-06-01 14:00:00", paid_at: "2024-06-01 14:00:30", total: 0}
+          - {order_key: "woo-z2", status: refunded, created_at: "2024-06-02 14:00:00", paid_at: "2024-06-02 14:00:30", total: 0}
+          - {order_key: "woo-m1", status: completed, created_at: "2024-06-03 14:00:00", paid_at: "2024-06-03 14:00:30", total: 100}
+          - {order_key: "woo-s1", status: completed, created_at: "2024-06-04 14:00:00", paid_at: "2024-06-04 14:00:30", total: 45}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-z1a", order_key: "woo-z1", woo_product_id: p1, quantity: 1, subtotal: 70, line_total: 70}
+          - {order_item_key: "woo-li-z1b", order_key: "woo-z1", woo_product_id: p1, quantity: 1, subtotal: 30, line_total: 30}
+          - {order_item_key: "woo-li-z2a", order_key: "woo-z2", woo_product_id: p1, quantity: 1, subtotal: 70, line_total: 70}
+          - {order_item_key: "woo-li-z2b", order_key: "woo-z2", woo_product_id: p1, quantity: 1, subtotal: 30, line_total: 30}
+          - {order_item_key: "woo-li-m1a", order_key: "woo-m1", woo_product_id: p1, quantity: 1, subtotal: 75, line_total: 75}
+          - {order_item_key: "woo-li-m1b", order_key: "woo-m1", woo_product_id: p1, quantity: 1, subtotal: 25, line_total: 25}
+          - {order_item_key: "woo-li-s1", order_key: "woo-s1", woo_product_id: p1, quantity: 1, subtotal: 40, line_total: 45}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: p1, woo_event_id: null, product_kind: ticket}
+      - input: ref('core_events')
+        rows: []
+    expect:
+      rows:
+        - {order_item_key: "woo-li-z1a", list_value: 70, discount: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false}
+        - {order_item_key: "woo-li-z1b", list_value: 30, discount: 0, realized_revenue: 30, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 30, sns_share: 12, instructor_share: 18, is_cancelled: false}
+        - {order_item_key: "woo-li-z2a", list_value: 70, discount: 0, realized_revenue: 70, refunded_amount: 70, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+        - {order_item_key: "woo-li-z2b", list_value: 30, discount: 0, realized_revenue: 30, refunded_amount: 30, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+        - {order_item_key: "woo-li-m1a", list_value: 75, discount: 0, realized_revenue: 75, refunded_amount: 15, processing_fee: 2.4, fee_source: actual, net_distributable: 57.6, sns_share: 23.04, instructor_share: 34.56, is_cancelled: false}
+        - {order_item_key: "woo-li-m1b", list_value: 25, discount: 0, realized_revenue: 25, refunded_amount: 5, processing_fee: 0.8, fee_source: actual, net_distributable: 19.2, sns_share: 7.68, instructor_share: 11.52, is_cancelled: false}
+        - {order_item_key: "woo-li-s1", list_value: 45, discount: 0, realized_revenue: 45, refunded_amount: 0, processing_fee: 1.605, fee_source: estimated, net_distributable: 43.395, sns_share: 17.358, instructor_share: 26.037, is_cancelled: false}
 
   - name: bookings_are_ticket_items_with_event_timing
     description: Only ticket items become bookings. A sale recorded after the event is counted on the event date. A cancelled booking has no net seats.

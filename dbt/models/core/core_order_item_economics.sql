@@ -1,17 +1,35 @@
 {{ config(tags=['hourly']) }}
 -- Economics per order item, for every item type, in both eras. Order-level amounts (discount,
--- service fee, refund, Stripe fee) are split across the order's items in proportion to line value.
+-- service fee, and bronco refunds) and Stripe fees are split across the order's items in proportion
+-- to line value, falling back to an equal split when every line in the order is worth zero.
 -- core_bookings keeps the ticket rows; the conservation test runs here, where all items are present.
 --
--- Controller decisions (task 6, 2026-09-27):
---  - "Which orders count" follows core_orders.sql, not the original brief: the legacy branch below
---    uses core_orders' own paid-status list (completed, processing, refunded) and total >= 0, with
---    NO archive-side date filter (core_orders.sql's ruling: the archive already ends at cutover).
---  - CMS refunds count only when status = 'Succeeded' (core_orders.sql's ruling: 'Completed' is not
---    a real CMS refund status; only 'Succeeded' returns money per AdminCommerceService.cs:214).
---  - Bronco seat rule: an item holds a seat only while its ticket is Active, Paid or Used, or when
---    the item has no matching ticket row at all. Any other status (Refunded, Transferred, ...)
---    cancels it.
+-- Which orders count: bronco orders with source = 'webapp' and status in ('Paid', 'Partial Refund',
+-- 'Refunded'); legacy orders with status in ('completed', 'processing', 'refunded') and total >= 0,
+-- with no date cutoff -- the archive already ends at the platform cutover.
+--
+-- Refunds: a bronco item's refunded_amount is the order's succeeded CMS refund total, split by
+-- weight. A legacy item's refunded_amount is the order's matched Stripe refund total, split by
+-- weight, when that total is above zero; otherwise, on an order whose own status is 'refunded', each
+-- item refunds its OWN realized revenue in full, not a weighted share of the order's `total` -- some
+-- refunded legacy orders carry a total of 0, or a total below their own line value, so the order
+-- total is not a reliable amount to split across items.
+--
+-- Seats: a bronco item holds a seat only while its ticket is Active, Paid or Used, or when the item
+-- has no matching ticket row at all -- any other ticket status cancels it, regardless of how much of
+-- the order was refunded. A legacy item has no ticket status to check, so it is cancelled only when
+-- its own refunded_amount reaches its own realized_revenue.
+--
+-- Zero-total orders: an order can be paid by gift card, credit or voucher and carry a total of 0
+-- while its line items still carry real value; those items keep their full realized revenue. With no
+-- card payment there is no Stripe fee to estimate, so they get fee_source = 'none' -- the same
+-- fee_source a genuinely zero-value item gets (realized_revenue distinguishes the two: above zero
+-- for a zero-total-but-valuable order, exactly zero for a real comp).
+--
+-- Legacy line totals: the archive's line_total is always the realized value for a line. list_value
+-- is the larger of it and the line's own subtotal, so a line whose subtotal happens to be below its
+-- own line_total (an archive data quirk) still produces realized_revenue = line_total and a discount
+-- that is never negative.
 with event_by_legacy_id as (
   select wordpress_source_id as woo_event_id, event_key
   from {{ ref('core_events') }}
@@ -45,6 +63,7 @@ bronco as (
     coalesce(o.discount, 0) as order_discount,
     coalesce(o.service_fee, 0) as order_service_fee,
     coalesce(r.refunded, 0) as order_refunded,
+    false as refund_by_status,                        -- bronco refunds always come from CMS refunds, never a status fallback
     coalesce(o.total, 0) > 0 as card_paid,
     coalesce(t.status not in ('Active', 'Paid', 'Used'), false) as ticket_refunded
   from {{ ref('stg_cms__order_items') }} i
@@ -59,12 +78,13 @@ legacy as (
     m.event_key,
     coalesce(o.paid_at, o.created_at) as purchased_at,
     coalesce(li.quantity, 1) as seats,
-    coalesce(li.subtotal, li.line_total, 0) as list_value,
+    greatest(coalesce(li.subtotal, li.line_total, 0), coalesce(li.line_total, 0)) as list_value,
     coalesce(li.line_total, 0) as weight_base,
-    greatest(coalesce(li.subtotal, li.line_total, 0) - coalesce(li.line_total, 0), 0) as line_discount,
+    greatest(coalesce(li.subtotal, li.line_total, 0), coalesce(li.line_total, 0)) - coalesce(li.line_total, 0) as line_discount,
     0.0 as order_discount,
     0.0 as order_service_fee,
-    case when coalesce(s.refunded, 0) > 0 then s.refunded when o.status = 'refunded' then coalesce(o.total, 0) else 0 end as order_refunded,
+    coalesce(s.refunded, 0) as order_refunded,
+    coalesce(s.refunded, 0) <= 0 and o.status = 'refunded' as refund_by_status,
     coalesce(o.total, 0) > 0 as card_paid,
     false as ticket_refunded
   from {{ ref('stg_woo__order_line_items') }} li
@@ -77,13 +97,13 @@ legacy as (
 ),
 items as (
   select order_item_key, order_key, source_system, item_kind, event_key, purchased_at, seats, list_value, weight_base,
-    line_discount, order_discount, order_service_fee, order_refunded, card_paid, ticket_refunded
+    line_discount, order_discount, order_service_fee, order_refunded, refund_by_status, card_paid, ticket_refunded
   from bronco
   union all
   select order_item_key, order_key, source_system,
     case item_kind_raw when 'ticket' then 'ticket' when 'gift_card' then 'gift_card' else 'other' end,
     event_key, purchased_at, seats, list_value, weight_base,
-    line_discount, order_discount, order_service_fee, order_refunded, card_paid, ticket_refunded
+    line_discount, order_discount, order_service_fee, order_refunded, refund_by_status, card_paid, ticket_refunded
   from legacy
 ),
 weighted as (
@@ -97,9 +117,15 @@ revenue as (
   select *,
     coalesce(line_discount, order_discount * w) as discount,
     order_service_fee * w as service_fee,
-    list_value - coalesce(line_discount, order_discount * w) + order_service_fee * w as realized_revenue,
-    order_refunded * w as refunded_amount
+    list_value - coalesce(line_discount, order_discount * w) + order_service_fee * w as realized_revenue
   from weighted
+),
+refunded as (
+  select *,
+    -- Legacy's status-refund case refunds each item's own realized revenue in full, not a weighted
+    -- share of the order's (unreliable) total; every other case is the usual weighted split.
+    case when refund_by_status then realized_revenue else order_refunded * w end as refunded_amount
+  from revenue
 ),
 fees as (
   select r.*,
@@ -109,7 +135,7 @@ fees as (
       else 0
     end as processing_fee,
     case when coalesce(s.has_charge, false) then 'actual' when r.card_paid then 'estimated' else 'none' end as fee_source
-  from revenue r
+  from refunded r
   left join stripe s using (order_key)
 )
 select order_item_key, order_key, source_system,
@@ -125,5 +151,7 @@ select order_item_key, order_key, source_system,
   round(realized_revenue - refunded_amount - processing_fee, 6) as net_distributable,
   round({{ var('sns_share_rate') }} * (realized_revenue - refunded_amount - processing_fee), 6) as sns_share,
   round({{ var('instructor_share_rate') }} * (realized_revenue - refunded_amount - processing_fee), 6) as instructor_share,
-  ticket_refunded or (realized_revenue > 0 and refunded_amount >= realized_revenue - 0.005) as is_cancelled
+  -- A bronco item's seat is decided by its own ticket status alone. A legacy item has no ticket
+  -- status, so (and only for legacy) a refund reaching its own realized revenue cancels it.
+  ticket_refunded or (source_system = 'woocommerce' and realized_revenue > 0 and refunded_amount >= realized_revenue - 0.005) as is_cancelled
 from fees
