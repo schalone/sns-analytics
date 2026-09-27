@@ -10,7 +10,6 @@ from google.cloud import bigquery
 
 from loaders.common.bq import RawWriter
 from loaders.common.config import OPS, RAW_CMS, RAW_GSC, RAW_SPEND, RAW_STRIPE, Settings
-from loaders.common.slack import post_status
 from loaders.common.state import LoadState, StepResult
 
 ALL = ["cms", "stripe", "gsc", "spend"]
@@ -31,18 +30,33 @@ def summarise(results: list[StepResult]) -> str:
     for r in results:
         per[r.step.split(".")[0]] = per.get(r.step.split(".")[0], 0) + r.rows
     parts = [f"{k} {v:,}" for k, v in per.items()]
-    errors = [f"⚠ {r.step}: {r.message.splitlines()[0]}" for r in results if r.status == "error"]
+    errors = [f"⚠ {r.step}: {(r.message.splitlines() or [''])[0]}" for r in results if r.status == "error"]
     return "sns-analytics loaders: " + " · ".join(parts) + ("\n" + "\n".join(errors) if errors else "")
 
 
-def main(argv=None) -> int:
+def _write_summary_file(text: str) -> None:
+    path = os.environ.get("LOADERS_SUMMARY_FILE")
+    if path:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+
+def main(argv=None, client_factory=None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
-    settings = Settings.from_env(os.environ)
-    client = bigquery.Client(project=settings.project, location=settings.location)
-    writer = RawWriter(client, settings.project, settings.run_id, settings.location)
-    for ds in (RAW_CMS, RAW_STRIPE, RAW_GSC, RAW_SPEND, OPS):
-        writer.ensure_dataset(ds)
-    state = LoadState(client, settings.project); state.ensure()
+
+    try:
+        settings = Settings.from_env(os.environ)
+        factory = client_factory or (lambda: bigquery.Client(project=settings.project, location=settings.location))
+        client = factory()
+        writer = RawWriter(client, settings.project, settings.run_id, settings.location)
+        for ds in (RAW_CMS, RAW_STRIPE, RAW_GSC, RAW_SPEND, OPS):
+            writer.ensure_dataset(ds)
+        state = LoadState(client, settings.project); state.ensure()
+    except Exception as e:  # noqa: BLE001 - setup failure must still produce one status line, never a crash
+        text = f"sns-analytics loaders: ⚠ setup: {type(e).__name__}: {e}"
+        print(text)
+        _write_summary_file(text)
+        return 2
 
     results: list[StepResult] = []
     if "cms" in args.sources:
@@ -60,8 +74,8 @@ def main(argv=None) -> int:
 
     text = summarise(results)
     print(text)
+    _write_summary_file(text)
     if any(r.status == "error" for r in results):
-        post_status(settings, text)
         return 2
     return 0
 
