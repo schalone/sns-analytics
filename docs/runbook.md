@@ -78,7 +78,7 @@ whole account history. The economic truth layer plan adds it (by changing the jo
 **The hourly selector** (`dbt/selectors.yml`) is every model tagged `hourly` together with all its
 ancestors, minus every model tagged `ga4` and the GA4 source. Hourly models: `core_orders`, `core_tickets`,
 `core_order_items`, `core_refunds`, `core_events`, `core_venues`, `core_metros`, `core_instructors`,
-`mart_daily_kpis`, `mart_orders_reconciliation`. Their ancestors bring in the CMS and WooCommerce staging
+`mart_daily_kpis`, `mart_orders_reconciliation`, `mart_event_performance`. Their ancestors bring in the CMS and WooCommerce staging
 views, `stg_stripe__balance_transactions`, `core_stripe_transactions` and the `date_flags` seed, and every
 test on them runs too. `core_sessions` and `core_session_orders` are tagged `ga4` and build in the daily
 run only (the GA4 daily table lands once a day); the hourly `mart_daily_kpis` reads the existing
@@ -214,9 +214,10 @@ change must be re-applied to history (it was done once on 2026-09-27 for the att
   history.
 - **`ga4_start_date`** (default `2025-01-01`): the floor of a first build / full refresh of the GA4 models.
 - **`launch_date`** (`2026-06-19`): the WooCommerce → webapp cutover; drives `platform_era` on sessions
-  (by `session_date`) and the start of `mart_orders_reconciliation`. Orders (and tickets/refunds/order
-  items keyed to them) get `platform_era` from `source_system` instead (`woocommerce` ->
-  `legacy_event_tickets`, else `bronco`), not from `launch_date` directly.
+  (by `session_date`) and on `mart_orders_reconciliation` (by `business_date`, whole history, both
+  eras -- `flagged` can only be true on the bronco side of the boundary). Orders (and
+  tickets/refunds/order items keyed to them) get `platform_era` from `source_system` instead
+  (`woocommerce` -> `legacy_event_tickets`, else `bronco`), not from `launch_date` directly.
 - **`ads_customer_id`** (`1863952460`): builds the `google_ads` table identifiers.
 
 ## Secret rotation
@@ -239,7 +240,7 @@ A green `dbt build` today shows exactly these warnings; any error, or any other 
 |---|---|---|
 | `assert_webapp_orders_present` | `core_orders` has no `webapp` orders (`raw_cms` empty; CMS export API not deployed) | the first CMS backfill (handoff item 8) |
 | `assert_raw_cms_orders_fresh` | nothing was loaded into `raw_cms.orders` in the last day (an empty table warns) | the CMS loader runs at least daily |
-| `assert_reconciliation_variance_recent` | recent days of `mart_orders_reconciliation` are flagged: Stripe rows exist with no CMS orders to compare | CMS orders flow and the economic truth layer plan's Stripe matching lands |
+| `assert_reconciliation_variance_recent` | recent bronco days of `mart_orders_reconciliation` are flagged: Stripe already carries bronco-era charge activity but there are no bronco CMS orders yet, so `orders_charged_amount` is 0 against a real `stripe_charged_amount` | the first CMS backfill lands bronco orders (handoff item 8) |
 
 Warn-severity tests that pass today but will warn if their condition appears: `assert_core_sessions_fresh`,
 `assert_raw_gsc_fresh`, `assert_search_page_totals_match_property_totals`, the `core_tickets.event_key`
