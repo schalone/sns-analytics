@@ -8,7 +8,11 @@ gcloud config set project $PROJECT >/dev/null
 
 echo "## datasets"
 for d in raw_cms raw_stripe raw_gsc raw_spend google_ads ops staging core mart; do
-  bq --location=$LOCATION mk --dataset --quiet "$PROJECT:$d" 2>/dev/null || true
+  if ! bq show --dataset "$PROJECT:$d" >/dev/null 2>&1; then
+    bq --location=$LOCATION mk --dataset "$PROJECT:$d"
+  fi
+  loc=$(bq show --format=json --dataset "$PROJECT:$d" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("location",""))')
+  if [ "$loc" != "$LOCATION" ]; then echo "ERROR: dataset $d is in '$loc', expected $LOCATION" >&2; exit 1; fi
 done
 
 echo "## service account + IAM"
@@ -38,7 +42,8 @@ for s in stripe-restricted-key cms-export-token; do
 done
 
 echo "## Google Ads transfer"
-if ! bq ls --transfer_config --transfer_location=$LOCATION --format=prettyjson | grep -q '"displayName": "sns-google-ads"'; then
+transfer_configs=$(bq ls --transfer_config --transfer_location=$LOCATION --format=prettyjson 2>/dev/null || true)
+if ! grep -q '"displayName": "sns-google-ads"' <<<"$transfer_configs"; then
   bq mk --transfer_config --transfer_location=$LOCATION --project_id=$PROJECT --data_source=google_ads \
      --display_name=sns-google-ads --target_dataset=google_ads --params="{\"customer_id\":\"$ADS_CUSTOMER\",\"include_pmax\":true}"
   echo "   -> authorise the transfer in the console (BigQuery > Data transfers > sns-google-ads) with a user who can read Ads customer $ADS_CUSTOMER, then schedule a backfill of 90 days."
@@ -53,11 +58,14 @@ gcloud run jobs add-iam-policy-binding $JOB --region $REGION --member serviceAcc
 
 echo "## schedulers"
 RUN_URI="https://run.googleapis.com/v2/projects/$PROJECT/locations/$REGION/jobs/$JOB:run"
-gcloud scheduler jobs describe sns-analytics-daily --location $REGION >/dev/null 2>&1 \
-  || gcloud scheduler jobs create http sns-analytics-daily --location $REGION --schedule "0 11 * * *" --time-zone UTC --uri "$RUN_URI" --http-method POST \
+if ! gcloud scheduler jobs describe sns-analytics-daily --location $REGION >/dev/null 2>&1; then
+  gcloud scheduler jobs create http sns-analytics-daily --location $REGION --schedule "0 11 * * *" --time-zone UTC --uri "$RUN_URI" --http-method POST \
        --oauth-service-account-email $SA --message-body '{"overrides":{"containerOverrides":[{"env":[{"name":"MODE","value":"daily"}]}]}}'
-gcloud scheduler jobs describe sns-analytics-hourly --location $REGION >/dev/null 2>&1 \
-  || gcloud scheduler jobs create http sns-analytics-hourly --location $REGION --schedule "30 * * * *" --time-zone UTC --uri "$RUN_URI" --http-method POST \
+  gcloud scheduler jobs pause sns-analytics-daily --location $REGION
+fi
+if ! gcloud scheduler jobs describe sns-analytics-hourly --location $REGION >/dev/null 2>&1; then
+  gcloud scheduler jobs create http sns-analytics-hourly --location $REGION --schedule "30 * * * *" --time-zone UTC --uri "$RUN_URI" --http-method POST \
        --oauth-service-account-email $SA --message-body '{"overrides":{"containerOverrides":[{"env":[{"name":"MODE","value":"hourly"}]}]}}'
-gcloud scheduler jobs pause sns-analytics-daily --location $REGION; gcloud scheduler jobs pause sns-analytics-hourly --location $REGION
-echo "schedulers created PAUSED; resume after the first successful manual run (Task 16)."
+  gcloud scheduler jobs pause sns-analytics-hourly --location $REGION
+fi
+echo "new schedulers are created PAUSED; existing schedulers are left as they are. Resume after the first successful manual run (Task 16)."
