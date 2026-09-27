@@ -63,3 +63,18 @@ models:
     columns:
       - name: refund_key
         data_tests: [unique, not_null]
+
+  - name: core_sessions
+    columns:
+      - name: session_key
+        data_tests: [unique, not_null]
+      - name: default_channel_group
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Paid Search, Paid Social, Organic Social, Organic Search, Email, Direct, Referral, Other]
+
+  - name: core_session_orders
+    columns:
+      - name: order_key
+        data_tests: [unique, not_null]
