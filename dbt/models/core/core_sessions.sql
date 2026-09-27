@@ -70,18 +70,32 @@ fixed as (
     lag(session_start_at) over (partition by user_pseudo_id order by session_start_at) as prev_start
   from sess s
 ),
+resolved as (
+  -- Fix round 2, item 2 (controller): one `inherits_prev` boolean, used consistently for
+  -- source/medium/campaign, so a phantom session that doesn't qualify for inheritance never ends
+  -- up with a self-contradicting mix (previously: source/medium fell back to
+  -- '(direct)'/'(none)' but campaign kept its own raw value, e.g. '(referral)').
+  select *,
+    is_phantom_referral and prev_source is not null and prev_source != 'accounts.google.com'
+      and timestamp_diff(session_start_at, prev_start, minute) <= 30 as inherits_prev
+  from fixed
+),
 final as (
   select session_key, user_pseudo_id, session_start_at, session_date, landing_page,
     regexp_extract(landing_page, r'^https?://[^/]+(/[^?#]*)') as landing_page_path,
-    regexp_extract(landing_page, r'[?&]q=([^&#]+)') as landing_query_q,
-    case when is_phantom_referral and prev_source is not null and prev_source != 'accounts.google.com' and timestamp_diff(session_start_at, prev_start, minute) <= 30 then prev_source
-         when is_phantom_referral then '(direct)' else coalesce(raw_source, '(direct)') end as source,
-    case when is_phantom_referral and prev_source is not null and prev_source != 'accounts.google.com' and timestamp_diff(session_start_at, prev_start, minute) <= 30 then prev_medium
-         when is_phantom_referral then '(none)' else coalesce(raw_medium, '(none)') end as medium,
-    case when is_phantom_referral and timestamp_diff(session_start_at, prev_start, minute) <= 30 then prev_campaign else campaign end as campaign,
+    {{ url_decode("regexp_extract(landing_page, r'[?&]q=([^&#]+)')") }} as landing_query_q,
+    case when inherits_prev then prev_source
+         when is_phantom_referral then '(direct)'
+         else coalesce(raw_source, '(direct)') end as source,
+    case when inherits_prev then prev_medium
+         when is_phantom_referral then '(none)'
+         else coalesce(raw_medium, '(none)') end as medium,
+    case when inherits_prev then prev_campaign
+         when is_phantom_referral then '(direct)'
+         else campaign end as campaign,
     google_ads_campaign_id, gclid, gclid is not null as has_gclid, engaged, page_views, device_category, country, region, city, is_phantom_referral,
     session_date < date('{{ var("launch_date") }}') as pre_launch
-  from fixed
+  from resolved
 )
 select final.*, {{ channel_group('source', 'medium', 'campaign', 'has_gclid') }} as default_channel_group
 from final
