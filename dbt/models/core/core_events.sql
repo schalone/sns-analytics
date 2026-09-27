@@ -1,6 +1,11 @@
+{{ config(tags=['hourly']) }}
 with e as (select * from {{ ref('stg_cms__events') }}),
 sold as (
-  select event_key, countif(status in ('Paid','Used')) as seats_sold from {{ ref('stg_cms__tickets') }} group by event_key
+  -- Final-review I6: a seat is sold when its ticket is Active, Paid or Used -- the site's own seat count
+  -- (EventAvailabilityService.cs:76 and :122 in sns-analytics-export-api). Held/Pending are checkout holds;
+  -- Transferred tickets gave their seat to a new Paid ticket; Expired/Failed/Refunded/Cancelled hold none.
+  -- One ticket = one seat (the export emits one row per ticket).
+  select event_key, countif(status in ('Active', 'Paid', 'Used')) as seats_sold from {{ ref('stg_cms__tickets') }} group by event_key
 )
 -- Task 14b: prefer the export's own start_at_utc/end_at_utc (the same instants, already in UTC)
 -- when present, falling back to the event_date + venue-local start/end_time + time_zone

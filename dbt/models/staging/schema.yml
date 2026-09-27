@@ -1,12 +1,25 @@
 version: 2
 
 models:
+  # Final-review I6: CMS status / source value lists read from the CMS source (sns-analytics-export-api,
+  # read-only); file:line evidence per value in final-fix-report.md. Error severity: a new spelling must stop
+  # the build rather than be silently miscounted by core_orders / core_events.
   - name: stg_cms__orders
     columns:
       - name: order_key
         data_tests: [unique, not_null]
       - name: created_at
         data_tests: [not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Pending, Paid, Abandoned, Failed, Refunded, Partial Refund, On Hold, Draft, Cancelled]
+      - name: source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [webapp, wordpressImport]
 
   - name: stg_cms__order_items
     columns:
@@ -22,11 +35,21 @@ models:
     columns:
       - name: ticket_key
         data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Held, Pending, Paid, Active, Used, Transferred, Expired, Failed, Refunded, Cancelled]
 
   - name: stg_cms__refunds
     columns:
       - name: refund_key
         data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Pending, Succeeded, Failed]
 
   - name: stg_cms__promo_redemptions
     columns:

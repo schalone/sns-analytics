@@ -1,10 +1,20 @@
 {{ config(tags=['hourly']) }}
 
--- Ruling 6: WooCommerce paid statuses. `select status, count(*) from staging.stg_woo__orders group by 1`
--- (checked 2026-09-27) -> completed 108834, failed 2235, refunded 1209, cancelled 528,
--- checkout-draft 17, processing 13, pending 2, on-hold 2. `processing` (13 rows) and the other
--- non-terminal statuses hold no meaningful volume, so the brief's `completed`/`refunded` pair is
--- kept unchanged.
+-- Ruling 6, superseded by final-review I7: WooCommerce paid statuses. `select status, count(*) from
+-- staging.stg_woo__orders group by 1` (checked 2026-09-27) -> completed 108834, failed 2235, refunded 1209,
+-- cancelled 528, checkout-draft 17, processing 13, pending 2, on-hold 2. The 13 `processing` orders all fall in
+-- the last three days before cutover ($3,120.37): paid orders the archive never saw completed. They count as paid
+-- alongside `completed` and `refunded`. The archive ends at cutover, so no archive-side date filter is applied:
+-- 13 completed orders dated 2026-06-19 (New York) were lost to it while their CMS copies are excluded as
+-- `wordpressImport`. `pre_launch` is still business_date < launch_date.
+--
+-- Final-review I6: CMS literals are the CMS's own spellings (sns-analytics-export-api, read-only):
+--   order statuses counted as paid: Paid, Partial Refund, Refunded (WordPressImportService.IsPaidOrderStatus,
+--     WordPressImportService.cs:2670-2675; Paid set at CheckoutService.cs:1425; Refunded / Partial Refund at
+--     AdminCommerceService.cs:220 and :231);
+--   refund statuses: Pending, Succeeded, Failed; only Succeeded returns money (AdminCommerceService.cs:214 sums
+--     Status = 'Succeeded' for the order's refunded total).
+-- The full value lists are enforced by accepted_values tests on the staging models.
 --
 -- Ruling 4: guest orders. `select countif(customer_id is null), countif(cast(customer_id as string)
 -- = '0') from sipandscript_new_ds.orders` (checked 2026-09-27) -> 0 null, 40127 zero (of 112841).
@@ -17,13 +27,16 @@ with cms_items as (
   from {{ ref('stg_cms__order_items') }} group by order_key
 ),
 cms_refunds as (
-  select order_key, sum(amount) as refunded_amount from {{ ref('stg_cms__refunds') }} where status in ('Completed', 'Succeeded', 'succeeded') group by order_key
+  select order_key, sum(amount) as refunded_amount from {{ ref('stg_cms__refunds') }} where status = 'Succeeded' group by order_key
 ),
 cms as (
   select o.order_key, 'webapp' as source_system, o.order_number, o.status, o.created_at, o.paid_at,
     date(coalesce(o.paid_at, o.created_at), 'America/New_York') as business_date,
     case when i.ticket_items > 0 then 'ticket' when i.gift_items > 0 then 'gift_card' else 'other' end as order_type,
     o.total as gross_revenue, o.discount, o.service_fee, o.gift_card_applied, coalesce(r.refunded_amount, 0.0) as refunded_amount,
+    -- one exported ticket order item is exactly one seat: the CMS creates one OrderItem per Ticket
+    -- (CheckoutService.cs:229-250, one Ticket plus one Type = "Ticket" OrderItem per seat) and the export emits quantity 1 for every item
+    -- (AnalyticsCommerceExportService.cs:154), so seats = the number of ticket items.
     coalesce(i.ticket_items, 0) as seats, o.promo_code, o.affiliate_key, o.member_key, o.customer_hash, o.billing_city, o.billing_state, o.billing_zip,
     o.stripe_checkout_session_id, o.updated_at
   from {{ ref('stg_cms__orders') }} o
@@ -51,12 +64,12 @@ woo as (
     case when o.woo_customer_id is null or o.woo_customer_id = '0' then null else o.woo_customer_id end as customer_hash,
     o.billing_city, o.billing_state, o.billing_zip, cast(null as string) as stripe_checkout_session_id, o.updated_at
   from {{ ref('stg_woo__orders') }} o left join woo_items i using (order_key)
-  -- Excludes 1 of 110,044 completed/refunded WooCommerce orders (id 374354, 2025-03-17): a $100
+  -- Excludes 1 of the completed/processing/refunded WooCommerce orders (id 374354, 2025-03-17): a $100
   -- discount applied against a $88.04 subtotal left `total` at -11.96. That is a real WooCommerce
   -- record (checked in sipandscript_new_ds.orders/order_line_items), not a staging bug, but a
   -- negative order total isn't revenue and would fail both `assert_net_not_above_gross` and the
   -- `gross_revenue >= 0` accepted_range test, so it is dropped here as a single known anomaly.
-  where o.status in ('completed', 'refunded') and o.created_at < timestamp('{{ var("launch_date") }}', 'America/New_York')
+  where o.status in ('completed', 'processing', 'refunded')
     and o.total >= 0
 ),
 unioned as (select * from cms union all select * from woo),
