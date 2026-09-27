@@ -63,3 +63,77 @@ unit_tests:
         - {order_key: "woo-105", source_system: woocommerce, customer_hash: "woo-cust-7f02221b889c10b28db633b93a2041ad", identity_source: woo_surrogate}
         - {order_key: "woo-106", source_system: woocommerce, customer_hash: null, identity_source: unresolved}
         - {order_key: "woo-107", source_system: woocommerce, customer_hash: null, identity_source: unresolved}
+
+  - name: events_union_legacy_and_capacity_fallback
+    description: A CMS event imported from WordPress with no capacity borrows it from the archive; an event the CMS never imported appears as woo-ev-<id>; two ticket products sum.
+    model: core_events
+    given:
+      - input: ref('stg_cms__events')
+        rows:
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000001", title: "Bronco event", event_date: "2026-08-01", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: 20, ticket_price: 70, status: Published}
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000002", title: "Imported event", event_date: "2025-03-01", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: null, ticket_price: null, wordpress_source_id: "500", status: Published}
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: k1, event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Paid}
+          - {ticket_key: k2, event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Refunded}
+      - input: ref('core_venues')
+        rows:
+          - {venue_key: v1, metro_key: m1, wordpress_source_id: null}
+          - {venue_key: "woo-venue-9", metro_key: m2, wordpress_source_id: "9"}
+      - input: ref('core_instructors')
+        rows:
+          - {instructor_key: "woo-org-7", wordpress_source_id: "7"}
+      - input: ref('stg_woo__events')
+        rows:
+          - {woo_event_id: "500", title: "Imported event (archive)", event_date: "2025-03-01", start_at: "2025-03-01 23:00:00", woo_venue_id: "9", woo_organizer_id: "7", event_cost: 60}
+          - {woo_event_id: "600", title: "Legacy only", status: publish, event_date: "2024-05-04", start_at: "2024-05-04 22:00:00", woo_venue_id: "9", woo_organizer_id: "7", event_cost: 55}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: "p1", woo_event_id: "500", product_kind: ticket, ticket_capacity: 16, regular_price: 60, name: "Imported event"}
+          - {woo_product_id: "p2", woo_event_id: "600", product_kind: ticket, ticket_capacity: 10, regular_price: 55, name: "Legacy only GA"}
+          - {woo_product_id: "p3", woo_event_id: "600", product_kind: ticket, ticket_capacity: 4, regular_price: 75, name: "Legacy only VIP"}
+          - {woo_product_id: "p4", woo_event_id: "700", product_kind: ticket, ticket_capacity: 0, regular_price: 40, name: "Old undated workshop"}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-1", status: completed}
+          - {order_key: "woo-2", status: failed}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-1", order_key: "woo-1", woo_product_id: "p2", quantity: 3, subtotal: 150}
+          - {order_item_key: "woo-li-2", order_key: "woo-1", woo_product_id: "p1", quantity: 2, subtotal: 120}
+          - {order_item_key: "woo-li-3", order_key: "woo-2", woo_product_id: "p2", quantity: 5, subtotal: 275}
+    expect:
+      # Note: dbt's unit-test compiler derives the comparison column set from the FIRST expected
+      # row's keys, then unions all rows positionally -- rows with different key sets both fail to
+      # compile and would silently skip comparing columns absent from row 1. All four rows below
+      # therefore carry the same 14 keys, in the same order, with the true computed value (title,
+      # venue_key, instructor_key, wordpress_source_id, metro_key are null where the underlying data
+      # gives no value) rather than the brief's originally sparser per-row column sets.
+      rows:
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000001", event_source: cms, platform_era: bronco, title: "Bronco event", capacity: 20, capacity_source: cms, ticket_price: 70, seats_sold: 1, seats_available: 19, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: null, has_event_date: true}
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000002", event_source: cms, platform_era: legacy_event_tickets, title: "Imported event", capacity: 16, capacity_source: woo_products, ticket_price: 60, seats_sold: 2, seats_available: 14, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: "500", has_event_date: true}
+        - {event_key: "woo-ev-600", event_source: woo_archive, platform_era: legacy_event_tickets, title: "Legacy only", capacity: 14, capacity_source: woo_products, ticket_price: 50, seats_sold: 3, seats_available: 11, venue_key: "woo-venue-9", metro_key: m2, instructor_key: "woo-org-7", wordpress_source_id: "600", has_event_date: true}
+        - {event_key: "woo-ev-700", event_source: woo_archive, platform_era: legacy_event_tickets, title: "Old undated workshop", capacity: null, capacity_source: none, ticket_price: 40, seats_sold: 0, seats_available: null, venue_key: null, metro_key: null, instructor_key: null, wordpress_source_id: "700", has_event_date: false}
+
+  - name: order_items_legacy_event_join_is_deduplicated
+    description: Two core_events rows can share a wordpress_source_id (e.g. a CMS-imported event and its archive-only counterpart); the legacy branch must resolve to one line item, carrying the CMS event's key, not one row per matching event.
+    model: core_order_items
+    given:
+      - input: ref('stg_cms__order_items')
+        rows: []
+      - input: ref('core_events')
+        rows:
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000001", wordpress_source_id: "500", event_source: cms}
+          - {event_key: "woo-ev-500", wordpress_source_id: "500", event_source: woo_archive}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: "p1", woo_event_id: "500", product_kind: ticket}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-1", status: completed}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-1", order_key: "woo-1", woo_product_id: "p1", quantity: 1, unit_price: 50, line_total: 50}
+    expect:
+      rows:
+        - {order_item_key: "woo-li-1", event_key: "eeeeeeee-0000-0000-0000-000000000001", platform_era: legacy_event_tickets}
