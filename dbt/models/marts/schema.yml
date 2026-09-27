@@ -1,0 +1,86 @@
+version: 2
+
+models:
+  - name: mart_daily_kpis
+    description: >
+      Day x channel_group x metro grain. `metro_key` is NULL on every session-only row (GA4 geo
+      city is not a metro), so `cvr` (ticket_orders / sessions) is only ever populated on rows
+      where `metro_key is null`; metro rows still carry their own orders and revenue. `cvr` is also
+      forced to NULL on any `business_date` flagged `unreliable_ga4` in the `date_flags` seed (the
+      Jun 19-22 GA4 cutover blackout) and is NULL rather than 0 or an error whenever sessions are
+      absent or zero (`safe_divide`). `aov` is similarly NULL when there are no orders in the cell.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - business_date
+              - pre_launch
+              - channel_group
+              - metro_key
+    columns:
+      - name: sessions
+        data_tests: [not_null]
+      - name: engaged_sessions
+        data_tests: [not_null]
+      - name: orders
+        data_tests: [not_null]
+      - name: ticket_orders
+        data_tests: [not_null]
+      - name: seats
+        data_tests: [not_null]
+      - name: gross_revenue
+        data_tests: [not_null]
+      - name: net_revenue
+        data_tests: [not_null]
+      - name: new_customers
+        data_tests: [not_null]
+
+  - name: mart_paid_performance
+    description: >
+      Day x platform x campaign grain. Google sessions/orders are gated behind the
+      `google_ads_enabled` var the same way `core_ad_spend` is; while it is false this mart
+      produces zero Google rows (and zero rows overall today, since `core_ad_spend` has no spend
+      rows until the CSV drop and/or Google Ads transfer have real data). `roas` and `cpa` are
+      ratios and are legitimately NULL (no spend, or no orders) rather than 0 or an error.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - date
+              - platform
+              - campaign_id
+              - campaign_name
+    columns:
+      - name: spend
+        data_tests: [not_null]
+      - name: sessions
+        data_tests: [not_null]
+      - name: orders
+        data_tests: [not_null]
+      - name: seats
+        data_tests: [not_null]
+      - name: net_revenue
+        data_tests: [not_null]
+
+  - name: mart_orders_reconciliation
+    description: >
+      Day grain, starting at `launch_date`. `variance_pct` and `flagged` are NULL (not false)
+      whenever there is no Stripe-side total to compare against for that day (safe_divide against
+      a NULL/zero denominator) -- the day's variance is undefined, not "within tolerance".
+    columns:
+      - name: business_date
+        data_tests: [unique, not_null]
+      - name: cms_orders
+        data_tests: [not_null]
+      - name: cms_net_revenue
+        data_tests: [not_null]
+      - name: stripe_charges
+        data_tests: [not_null]
+      - name: stripe_net
+        data_tests: [not_null]
+      - name: stripe_fees
+        data_tests: [not_null]
+      - name: stripe_gross_less_refunds
+        data_tests: [not_null]
+      - name: variance_amount
+        data_tests: [not_null]
