@@ -151,3 +151,160 @@ unit_tests:
     expect:
       rows:
         - {order_item_key: "woo-li-1", event_key: "eeeeeeee-0000-0000-0000-000000000001", platform_era: legacy_event_tickets}
+
+  - name: order_item_economics_bronco_split
+    description: Order-level discount, service fee and Stripe fee are split across items by line value; 60/40 applies after the fee.
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: A, source: webapp, status: Paid, created_at: "2026-09-10 14:00:00", paid_at: "2026-09-10 14:01:00", subtotal: 130, discount: 10, service_fee: 6, total: 126}
+      - input: ref('stg_cms__order_items')
+        rows:
+          - {order_item_key: A1, order_key: A, item_type: ticket, ticket_key: T1, event_key: E1, quantity: 1, line_total: 65}
+          - {order_item_key: A2, order_key: A, item_type: ticket, ticket_key: T2, event_key: E1, quantity: 1, line_total: 65}
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: T1, status: Paid}
+          - {ticket_key: T2, status: Used}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, order_key: A, amount: 126, fee: 4, net: 122}
+      - input: ref('stg_woo__orders')
+        rows: []
+      - input: ref('stg_woo__order_line_items')
+        rows: []
+      - input: ref('stg_woo__products')
+        rows: []
+      - input: ref('core_events')
+        rows: []
+    expect:
+      rows:
+        - {order_item_key: A1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
+        - {order_item_key: A2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
+
+  - name: order_item_economics_zero_value_order
+    description: Review focus 2. A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: Z, source: webapp, status: Paid, created_at: "2026-09-10 14:00:00", paid_at: null, subtotal: 0, discount: 0, service_fee: 0, total: 0}
+      - input: ref('stg_cms__order_items')
+        rows:
+          - {order_item_key: Z1, order_key: Z, item_type: ticket, ticket_key: T9, event_key: E1, quantity: 1, line_total: 0}
+          - {order_item_key: Z2, order_key: Z, item_type: ticket, ticket_key: T8, event_key: E1, quantity: 1, line_total: 0}
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_cms__tickets')
+        rows: []
+      - input: ref('core_stripe_transactions')
+        rows: []
+      - input: ref('stg_woo__orders')
+        rows: []
+      - input: ref('stg_woo__order_line_items')
+        rows: []
+      - input: ref('stg_woo__products')
+        rows: []
+      - input: ref('core_events')
+        rows: []
+    expect:
+      rows:
+        - {order_item_key: Z1, seats: 1, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
+        - {order_item_key: Z2, seats: 1, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
+
+  - name: order_item_economics_legacy
+    description: >
+      Legacy line totals are already net of discount. An unmatched order gets an estimated fee. A refunded order
+      keeps the Stripe fee as a loss, split 60/40. A partly refunded bronco order cancels only the refunded ticket.
+      Controller decision 3: CMS refunds count only when status = 'Succeeded' (R1 below; the brief's original
+      'Completed' is not a real CMS refund status per core_orders.sql's ruling). Controller decision 4 / addendum:
+      a third bronco item P3, on a ticket with status Transferred, proves the "any other status" branch of the
+      seat rule cancels the item; P3's line_total is 0 so it does not change the split (and hence the expected
+      values) for P1/P2. All expected rows in this test share one 17-key column set (Controller decision 5): dbt's
+      unit-test compiler derives the comparison column set from the first expected row and every row must supply
+      it, so P1/P2/P3 (bronco) and woo-li-3 (legacy) carry item_kind/event_key/list_value/discount/service_fee
+      too, computed by hand from the rules (see task-6-report.md for the arithmetic).
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: P, source: webapp, status: "Partial Refund", created_at: "2026-09-10 14:00:00", paid_at: "2026-09-10 14:01:00", subtotal: 100, discount: 0, service_fee: 0, total: 100}
+          - {order_key: X, source: wordpressImport, status: Paid, created_at: "2024-05-01 14:00:00", paid_at: "2024-05-01 14:01:00", subtotal: 50, discount: 0, service_fee: 0, total: 50}
+          - {order_key: D, source: webapp, status: Pending, created_at: "2026-09-10 14:00:00", paid_at: null, subtotal: 50, discount: 0, service_fee: 0, total: 50}
+      - input: ref('stg_cms__order_items')
+        rows:
+          - {order_item_key: P1, order_key: P, item_type: ticket, ticket_key: TP1, event_key: E1, quantity: 1, line_total: 50}
+          - {order_item_key: P2, order_key: P, item_type: ticket, ticket_key: TP2, event_key: E1, quantity: 1, line_total: 50}
+          - {order_item_key: P3, order_key: P, item_type: ticket, ticket_key: TP3, event_key: E1, quantity: 1, line_total: 0}
+          - {order_item_key: X1, order_key: X, item_type: ticket, ticket_key: TX1, event_key: E1, quantity: 1, line_total: 50}
+          - {order_item_key: D1, order_key: D, item_type: ticket, ticket_key: TD1, event_key: E1, quantity: 1, line_total: 50}
+      - input: ref('stg_cms__refunds')
+        rows:
+          - {refund_key: R1, order_key: P, amount: 50, status: Succeeded}
+          - {refund_key: R2, order_key: P, amount: 50, status: Failed}
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: TP1, status: Refunded}
+          - {ticket_key: TP2, status: Paid}
+          - {ticket_key: TP3, status: Transferred}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, order_key: P, amount: 100, fee: 3.2, net: 96.8}
+          - {txn_id: t2, type: refund, source_object: refund, order_key: P, amount: -50, fee: 0, net: -50}
+          - {txn_id: t3, type: charge, source_object: charge, order_key: "woo-2", amount: 40, fee: 1.46, net: 38.54}
+          - {txn_id: t4, type: refund, source_object: refund, order_key: "woo-2", amount: -40, fee: 0, net: -40}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-1", status: completed, created_at: "2024-05-01 14:00:00", paid_at: "2024-05-01 14:00:30", total: 50}
+          - {order_key: "woo-2", status: refunded, created_at: "2024-05-02 14:00:00", paid_at: "2024-05-02 14:00:30", total: 40}
+          - {order_key: "woo-3", status: refunded, created_at: "2018-05-02 14:00:00", paid_at: null, total: 30}
+          - {order_key: "woo-4", status: failed, created_at: "2024-05-02 14:00:00", paid_at: null, total: 30}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-1", order_key: "woo-1", woo_product_id: p1, quantity: 2, subtotal: 60, line_total: 50}
+          - {order_item_key: "woo-li-2", order_key: "woo-2", woo_product_id: p1, quantity: 1, subtotal: 40, line_total: 40}
+          - {order_item_key: "woo-li-3", order_key: "woo-3", woo_product_id: p1, quantity: 1, subtotal: 30, line_total: 30}
+          - {order_item_key: "woo-li-4", order_key: "woo-4", woo_product_id: p1, quantity: 1, subtotal: 30, line_total: 30}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: p1, woo_event_id: "600", product_kind: ticket}
+      - input: ref('core_events')
+        rows:
+          - {event_key: "woo-ev-600", wordpress_source_id: "600", event_source: woo_archive}
+    expect:
+      rows:
+        - {order_item_key: P1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 25, processing_fee: 1.6, fee_source: actual, net_distributable: 23.4, sns_share: 9.36, instructor_share: 14.04, is_cancelled: true}
+        - {order_item_key: P2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 25, processing_fee: 1.6, fee_source: actual, net_distributable: 23.4, sns_share: 9.36, instructor_share: 14.04, is_cancelled: false}
+        - {order_item_key: P3, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+        - {order_item_key: "woo-li-1", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 2, list_value: 60, discount: 10, service_fee: 0, realized_revenue: 50, refunded_amount: 0, processing_fee: 1.75, fee_source: estimated, net_distributable: 48.25, sns_share: 19.3, instructor_share: 28.95, is_cancelled: false}
+        - {order_item_key: "woo-li-2", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 40, discount: 0, service_fee: 0, realized_revenue: 40, refunded_amount: 40, processing_fee: 1.46, fee_source: actual, net_distributable: -1.46, sns_share: -0.584, instructor_share: -0.876, is_cancelled: true}
+        - {order_item_key: "woo-li-3", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 30, discount: 0, service_fee: 0, realized_revenue: 30, refunded_amount: 30, processing_fee: 1.17, fee_source: estimated, net_distributable: -1.17, sns_share: -0.468, instructor_share: -0.702, is_cancelled: true}
+
+  - name: bookings_are_ticket_items_with_event_timing
+    description: Only ticket items become bookings. A sale recorded after the event is counted on the event date. A cancelled booking has no net seats.
+    model: core_bookings
+    given:
+      - input: ref('core_order_item_economics')
+        rows:
+          - {order_item_key: A1, order_key: A, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchased_at: "2026-09-01 14:00:00", purchase_date: "2026-09-01", seats: 2, realized_revenue: 126, net_distributable: 122, sns_share: 48.8, instructor_share: 73.2, fee_source: actual, is_cancelled: false}
+          - {order_item_key: A2, order_key: A, source_system: webapp, platform_era: bronco, item_kind: gift_card, event_key: null, purchased_at: "2026-09-01 14:00:00", purchase_date: "2026-09-01", seats: 1, realized_revenue: 50, is_cancelled: false}
+          - {order_item_key: B1, order_key: B, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchased_at: "2026-09-12 14:00:00", purchase_date: "2026-09-12", seats: 1, realized_revenue: 63, is_cancelled: false}
+          - {order_item_key: C1, order_key: C, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchased_at: "2026-09-05 14:00:00", purchase_date: "2026-09-05", seats: 3, realized_revenue: 189, is_cancelled: true}
+          - {order_item_key: N1, order_key: N, source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: null, purchased_at: "2018-09-05 14:00:00", purchase_date: "2018-09-05", seats: 1, realized_revenue: 40, is_cancelled: false}
+      - input: ref('core_events')
+        rows:
+          - {event_key: E1, event_date: "2026-09-10"}
+      - input: ref('core_customer_identity')
+        rows:
+          - {order_key: A, customer_hash: h1, identity_source: cms}
+          - {order_key: B, customer_hash: h2, identity_source: cms}
+          - {order_key: C, customer_hash: h1, identity_source: cms}
+    expect:
+      rows:
+        - {booking_key: A1, order_key: A, event_key: E1, customer_hash: h1, identity_source: cms, purchase_date: "2026-09-01", sale_date: "2026-09-01", days_before_event: 9, seats: 2, net_seats: 2}
+        - {booking_key: B1, order_key: B, event_key: E1, customer_hash: h2, identity_source: cms, purchase_date: "2026-09-12", sale_date: "2026-09-10", days_before_event: -2, seats: 1, net_seats: 1}
+        - {booking_key: C1, order_key: C, event_key: E1, customer_hash: h1, identity_source: cms, purchase_date: "2026-09-05", sale_date: "2026-09-05", days_before_event: 5, seats: 3, net_seats: 0}
+        - {booking_key: N1, order_key: N, event_key: null, customer_hash: null, identity_source: unresolved, purchase_date: "2018-09-05", sale_date: "2018-09-05", days_before_event: null, seats: 1, net_seats: 1}
