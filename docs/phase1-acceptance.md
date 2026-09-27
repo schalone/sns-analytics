@@ -70,3 +70,57 @@ match at all (see the Task 13/14 report for the full measurement); its `cvr` is 
    select until then) and, for the social side, the Meta/Pinterest CSV drop having real spend rows
    (`raw_spend` is empty) and the Search Console backfill for any search-adjacent context
    (`raw_gsc` is empty, so `core.search_daily` is also empty today).
+
+## 2026-09-27 — Search Console backfill attempt (Task 16)
+
+**Access validation: succeeded.** Called `searchanalytics.query` directly (no loader, no BigQuery)
+for one day, property `https://www.sipandscript.com/`, dimension `["date"]`, using credentials built
+exactly as `loaders/gsc.py`'s `_service()` builds them
+(`google.auth.default(scopes=["https://www.googleapis.com/auth/webmasters.readonly"])`). It succeeded
+on the first attempt with the user's plain Application Default Credentials — no quota-project retry
+was needed (ADC's embedded quota project is a personal project, `vacation-innovations`, not
+`sipandscript`, but the Search Console API call did not require it to match). No loader code change is
+indicated by this finding.
+
+**Short validation load (~5-8 days, both properties, both dimension sets): succeeded, then rolled
+back.** Watermarks for the four `gsc.*` step names were seeded to 5 days before the run and
+`load_gsc(..., full=False)` was called with the injected service. All four steps returned `status=ok`:
+`gsc.page_query.apex` 132 rows, `gsc.page_device_country.apex` 115 rows, `gsc.page_query.www` 3,975
+rows, `gsc.page_device_country.www` 2,553 rows (6,775 rows total, window governed by the loader's
+3-day overlap plus 2-day final lag, so roughly 2026-09-16..2026-09-25). No duplicate `key` values were
+found within the load.
+
+**Blocking discovery: `RawWriter.append()` (`loaders/common/bq.py`) double-encodes the `payload`
+column, making it unusable.** Rebuilding `dbt build --select stg_gsc__page_query+` on the short-loaded
+data produced `core.core_search_daily` with `property`, `date`, `page`, `query`, `clicks`,
+`impressions` and `position` all `NULL` on all 4,107 rows (confirmed by direct query:
+`countif(property is null) = 4107`, `countif(date is null) = 4107`, `sum(clicks)` = `NULL`), which
+failed `dbt_utils_unique_combination_of_columns` on `core_search_daily` (all rows collapsed onto one
+all-NULL key — `Got 1 result, configured to fail if != 0`). Root cause, confirmed by an isolated probe
+against a throwaway table: `append()` calls `json.dumps(r.payload, default=str)` before assigning the
+result to the row's `payload` field, and BigQuery's `load_table_from_json` against a JSON-typed column
+stores a pre-stringified value as a JSON **string** scalar (`json_type(payload) = 'string'`), not a JSON
+**object** — every `json_value(payload, '$.field')` call in every staging model then returns `NULL`.
+This affects every loader (`cms`, `stripe`, `gsc`, `spend`), not only Search Console, and was invisible
+before this task because no loader had ever written a real row into any raw table. Full details, the
+reproduction, and the likely one-line fix are in `docs/runbook.md`'s "Known issue" section.
+
+**Decision: the 480-day full backfill was not run.** Under this task's controller rulings,
+`loaders/` is off-limits (the bug cannot be fixed here), and running the full backfill anyway would
+have written on the order of a few million further broken rows for no analytic benefit — every
+downstream measurement would have been `NULL`, and the whole-project `dbt build` would have failed on
+the `core_search_daily` uniqueness test rather than showing the expected single warning. Per this
+task's own escalation rule ("STOP and report BLOCKED... if the Search Console load starts producing
+errors you cannot explain"), the short-load rows (`_run_id = 'local-20260927T150725Z'`) were deleted
+from `raw_gsc.page_query` and `raw_gsc.page_device_country`, the four seeded `ops.load_state` rows for
+`source = 'gsc'` were deleted, and `core.core_search_daily` was rebuilt back to its prior empty (0-row)
+state so the repository is left exactly as it was before this task touched Search Console. The
+whole-project `dbt build` afterward is green (`PASS=157 WARN=1 ERROR=0`, the one expected
+`assert_webapp_orders_present` warning).
+
+**Not measurable as a result:** rows per raw table beyond the short-load counts above (both now 0
+again by design), the date range of a full backfill, `core.core_search_daily` row count, total
+clicks/impressions per property for the last 12 full weeks, the top 10 www queries by clicks in the
+last 28 days, and the sanity check against the September investigation's ~11,472-click figure for
+2026-06-23..2026-09-13. All of these require a real backfill, which requires the payload bug fixed
+first (see `docs/runbook.md`, `docs/handoff.md`).
