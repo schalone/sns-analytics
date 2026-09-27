@@ -252,6 +252,31 @@ models:
               config:
                 severity: warn
 
+  - name: core_ad_spend_allocation
+    description: "Allocation convention, not attribution. event_key is null on spend no event absorbed."
+    columns:
+      - name: spend
+        data_tests: [not_null]
+
+  - name: core_event_daily
+    description: "Booking curve. cumulative_realized_revenue is realized revenue less refunds. Capacity is the final recorded capacity, so pct_sold is capped at 1."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [event_key, snapshot_date]
+    columns:
+      - name: platform_era
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [legacy_event_tickets, bronco]
+      - name: days_until_event
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
   - name: core_search_totals_daily
     description: >
       Search Console property totals per day (dimensions [date]); complete. The source for every Search Console

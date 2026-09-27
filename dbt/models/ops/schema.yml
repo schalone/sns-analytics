@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: ops_unallocated_ad_spend
+    description: "Spend left over after allocation to events. Large values in a metro mean ads ran on days nothing sold there."
+    columns:
+      - name: spend
+        data_tests: [not_null]
