@@ -1,0 +1,26 @@
+with latest as ({{ latest_raw('raw_cms', 'orders') }})
+select
+  key                                                       as order_key,
+  json_value(payload, '$.orderNumber')                      as order_number,
+  json_value(payload, '$.status')                           as status,
+  timestamp(json_value(payload, '$.createdAt'))             as created_at,
+  timestamp(json_value(payload, '$.paidAt'))                as paid_at,
+  updated_at,
+  json_value(payload, '$.currency')                         as currency,
+  cast(json_value(payload, '$.subtotalCents') as int64) / 100      as subtotal,
+  cast(json_value(payload, '$.discountCents') as int64) / 100      as discount,
+  cast(json_value(payload, '$.serviceFeeCents') as int64) / 100    as service_fee,
+  cast(json_value(payload, '$.giftCardAmountCents') as int64) / 100 as gift_card_applied,
+  cast(json_value(payload, '$.totalCents') as int64) / 100         as total,
+  json_value(payload, '$.promoCode')                        as promo_code,
+  json_value(payload, '$.affiliateKey')                     as affiliate_key,
+  json_value(payload, '$.memberKey')                        as member_key,
+  json_value(payload, '$.customerHash')                     as customer_hash,
+  json_value(payload, '$.billingCity')                      as billing_city,
+  json_value(payload, '$.billingState')                     as billing_state,
+  json_value(payload, '$.billingZip')                       as billing_zip,
+  json_value(payload, '$.checkoutSessionKey')               as checkout_session_key,
+  json_value(payload, '$.stripeCheckoutSessionId')          as stripe_checkout_session_id,
+  json_value(payload, '$.source')                           as source,
+  json_value(payload, '$.wordpressOrderId')                 as wordpress_order_id
+from latest

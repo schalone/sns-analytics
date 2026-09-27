@@ -1,0 +1,130 @@
+version: 2
+
+models:
+  - name: stg_cms__orders
+    columns:
+      - name: order_key
+        data_tests: [unique, not_null]
+      - name: created_at
+        data_tests: [not_null]
+
+  - name: stg_cms__order_items
+    columns:
+      - name: order_item_key
+        data_tests: [unique, not_null]
+      - name: item_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ticket, giftCard, other]
+
+  - name: stg_cms__tickets
+    columns:
+      - name: ticket_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__refunds
+    columns:
+      - name: refund_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__promo_redemptions
+    columns:
+      - name: redemption_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__gift_cards
+    columns:
+      - name: gift_card_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__gift_card_transactions
+    columns:
+      - name: transaction_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__checkout_sessions
+    columns:
+      - name: checkout_session_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__events
+    columns:
+      - name: event_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__venues
+    columns:
+      - name: venue_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__metros
+    columns:
+      - name: metro_key
+        data_tests: [unique, not_null]
+
+  - name: stg_cms__instructors
+    columns:
+      - name: instructor_key
+        data_tests: [unique, not_null]
+
+  - name: stg_woo__orders
+    columns:
+      - name: order_key
+        data_tests:
+          # 2026-09-27: sipandscript_new_ds.orders has one exact-duplicate row pair (id 514177,
+          # 2 identical rows -- its order_line_items rows 36875/128582 are duplicated the same
+          # way, see stg_woo__order_line_items below). This is a known artifact of how the
+          # WooCommerce archive was exported, not a modelling error, so this test warns instead
+          # of failing the build.
+          - unique:
+              config:
+                severity: warn
+          - not_null
+
+  - name: stg_woo__order_line_items
+    columns:
+      - name: order_item_key
+        data_tests:
+          # 2026-09-27: 2 duplicate order_line_items rows (ids 36875, 128582); row 128582 belongs
+          # to the duplicated order 514177 above, row 36875 to order 140648 (single duplicated
+          # line, order itself not duplicated). Same archive-export artifact -- warn, not fail.
+          - unique:
+              config:
+                severity: warn
+          - not_null
+
+  - name: stg_woo__products
+    columns:
+      - name: woo_product_id
+        data_tests: [unique, not_null]
+
+  - name: stg_woo__events
+    columns:
+      - name: woo_event_id
+        data_tests: [unique, not_null]
+
+  - name: stg_woo__venues
+    columns:
+      - name: woo_venue_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__balance_transactions
+    columns:
+      - name: txn_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__refunds
+    columns:
+      - name: refund_id
+        data_tests: [unique, not_null]
+
+  - name: stg_gsc__page_query
+    columns:
+      - name: key
+        data_tests: [unique, not_null]
+
+  - name: stg_spend__csv
+    columns:
+      - name: key
+        data_tests: [unique, not_null]

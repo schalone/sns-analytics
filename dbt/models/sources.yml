@@ -1,0 +1,58 @@
+version: 2
+sources:
+  - name: raw_cms
+    tables:
+      - name: orders
+      - name: order_items
+      - name: tickets
+      - name: refunds
+      - name: promo_redemptions
+      - name: gift_cards
+      - name: gift_card_transactions
+      - name: checkout_sessions
+      - name: events
+      - name: venues
+      - name: metros
+      - name: instructors
+  - name: raw_stripe
+    tables:
+      - name: balance_transactions
+      - name: refunds
+      - name: disputes
+      - name: payouts
+  - name: raw_gsc
+    tables:
+      - name: page_query
+      - name: page_device_country
+  - name: raw_spend
+    tables:
+      - name: meta
+      - name: pinterest
+  - name: ga4
+    schema: "{{ var('ga4_dataset') }}"
+    tables:
+      - name: events
+        identifier: events_*
+  - name: woo
+    schema: "{{ var('woo_dataset') }}"
+    tables:
+      - name: orders
+      - name: order_line_items
+      - name: products
+      - name: events
+      - name: venues
+      - name: organizers
+      - name: _staging_products
+  - name: google_ads
+    tables:
+      - name: campaign_stats
+        identifier: "ads_CampaignBasicStats_{{ var('ads_customer_id') }}"
+      - name: campaign
+        identifier: "ads_Campaign_{{ var('ads_customer_id') }}"
+      - name: click_stats
+        identifier: "ads_ClickStats_{{ var('ads_customer_id') }}"
+  - name: public_geo
+    database: bigquery-public-data
+    schema: geo_us_boundaries
+    tables:
+      - name: zip_codes

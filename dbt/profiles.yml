@@ -1,0 +1,19 @@
+sns_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: sipandscript
+      dataset: staging
+      location: US
+      threads: 8
+      job_execution_timeout_seconds: 600
+    prod:
+      type: bigquery
+      method: oauth            # Cloud Run: the job's service-account identity via ADC
+      project: sipandscript
+      dataset: staging
+      location: US
+      threads: 8
+      job_execution_timeout_seconds: 1800
