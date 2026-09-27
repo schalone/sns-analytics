@@ -1,0 +1,4 @@
+{"entity": "orders", "generatedAt": "2026-09-26T12:00:01Z", "nextCursor": null,
+ "items": [
+  {"orderKey": "55555555-5555-5555-5555-555555555555", "orderNumber": "SNS-26-000003", "status": "Paid", "createdAt": "2026-09-25T13:00:00Z", "paidAt": "2026-09-25T13:01:00Z", "updatedAt": "2026-09-25T13:01:00Z", "currency": "USD", "subtotalCents": 6500, "discountCents": 500, "serviceFeeCents": 300, "giftCardAmountCents": 0, "totalCents": 6300, "promoCode": "FALL5", "affiliateKey": null, "memberKey": null, "customerHash": "ef56", "billingCity": "Austin", "billingState": "TX", "billingZip": "78701", "checkoutSessionKey": "66666666-6666-6666-6666-666666666666", "stripeCheckoutSessionId": "cs_test_3", "source": "webapp", "wordpressOrderId": null}
+ ]}
