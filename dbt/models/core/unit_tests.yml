@@ -60,6 +60,6 @@ unit_tests:
         - {order_key: "woo-102", source_system: woocommerce, customer_hash: import_hash, identity_source: cms_import}
         - {order_key: "woo-103", source_system: woocommerce, customer_hash: stripe_55, identity_source: stripe}
         - {order_key: "woo-104", source_system: woocommerce, customer_hash: stripe_55, identity_source: woo_propagated}
-        - {order_key: "woo-105", source_system: woocommerce, customer_hash: "woo-cust-66", identity_source: woo_surrogate}
+        - {order_key: "woo-105", source_system: woocommerce, customer_hash: "woo-cust-7f02221b889c10b28db633b93a2041ad", identity_source: woo_surrogate}
         - {order_key: "woo-106", source_system: woocommerce, customer_hash: null, identity_source: unresolved}
         - {order_key: "woo-107", source_system: woocommerce, customer_hash: null, identity_source: unresolved}

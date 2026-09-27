@@ -1,7 +1,8 @@
 {{ config(tags=['hourly']) }}
 -- One row per order in either system, with the customer it belongs to. The legacy archive holds no
 -- email and 36% of its orders are guest checkouts, so legacy identity comes from the hashed billing
--- email on the Stripe charge, then from the CMS's imported copy of the WordPress order.
+-- email on the Stripe charge, then from the CMS's imported copy of the WordPress order. The last-resort
+-- surrogate key is a hash of the legacy WooCommerce account id, never the id itself.
 with orders as (
   select order_key, 'webapp' as source_system, customer_hash as cms_hash, cast(null as string) as woo_customer_id
   from {{ ref('stg_cms__orders') }}
@@ -43,7 +44,7 @@ propagated as (
   qualify row_number() over (partition by woo_customer_id order by count(*) desc, direct_hash) = 1
 )
 select d.order_key, d.source_system,
-  coalesce(d.direct_hash, p.propagated_hash, concat('woo-cust-', d.woo_customer_id)) as customer_hash,
+  coalesce(d.direct_hash, p.propagated_hash, concat('woo-cust-', substr(to_hex(sha256(concat('woo-customer:', d.woo_customer_id))), 1, 32))) as customer_hash,
   case
     when d.direct_hash is not null then d.direct_source
     when p.propagated_hash is not null then 'woo_propagated'
