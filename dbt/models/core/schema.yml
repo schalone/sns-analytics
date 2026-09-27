@@ -100,6 +100,11 @@ models:
         data_tests: [not_null]
 
   - name: core_search_daily
+    description: >
+      Search Console page x query per property and day. PARTIAL: the API drops anonymised and low-volume
+      queries whenever `query` is requested (2026-06-23..2026-09-13: 5,097 of 11,306 clicks). Search-term
+      analysis only; never sum it to a total -- use core_search_totals_daily (property) or core_search_page_daily
+      (page) for totals.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -113,3 +118,26 @@ models:
     columns:
       - name: txn_id
         data_tests: [unique, not_null]
+
+  - name: core_search_totals_daily
+    description: >
+      Search Console property totals per day (dimensions [date]); complete. The source for every Search Console
+      click or impression total.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [property, date]
+
+  - name: core_search_page_daily
+    description: Search Console clicks and impressions per page and day (dimensions [date, page]); complete per page.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [property, date, page]
+
+  - name: core_search_device_country_daily
+    description: Search Console clicks and impressions per device and country and day (dimensions [date, device, country]); complete.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [property, date, device, country]

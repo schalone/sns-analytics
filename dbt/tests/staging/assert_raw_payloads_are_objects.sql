@@ -10,7 +10,7 @@
     ('raw_cms', 'checkout_sessions'), ('raw_cms', 'events'), ('raw_cms', 'venues'), ('raw_cms', 'metros'),
     ('raw_cms', 'instructors'),
     ('raw_stripe', 'balance_transactions'), ('raw_stripe', 'refunds'), ('raw_stripe', 'disputes'), ('raw_stripe', 'payouts'),
-    ('raw_gsc', 'page_query'), ('raw_gsc', 'page_device_country'),
+    ('raw_gsc', 'totals'), ('raw_gsc', 'page'), ('raw_gsc', 'device_country'), ('raw_gsc', 'page_query'),
     ('raw_spend', 'meta'), ('raw_spend', 'pinterest')
 ] %}
 {% for dataset, table in raw_tables %}

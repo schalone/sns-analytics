@@ -131,6 +131,21 @@ models:
       - name: key
         data_tests: [unique, not_null]
 
+  - name: stg_gsc__totals
+    columns:
+      - name: key
+        data_tests: [unique, not_null]
+
+  - name: stg_gsc__page
+    columns:
+      - name: key
+        data_tests: [unique, not_null]
+
+  - name: stg_gsc__device_country
+    columns:
+      - name: key
+        data_tests: [unique, not_null]
+
   - name: stg_spend__csv
     columns:
       - name: key

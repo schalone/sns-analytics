@@ -21,9 +21,14 @@ sources:
       - name: disputes
       - name: payouts
   - name: raw_gsc
+    # Final-review I18: totals / page / device_country are the complete dimension sets; page_query is partial
+    # (anonymised queries dropped). raw_gsc.page_device_country still holds its 2025-06-04..2026-09-24 backfill
+    # but is no longer loaded or modelled (the API drops over half the clicks for that combination).
     tables:
+      - name: totals
+      - name: page
+      - name: device_country
       - name: page_query
-      - name: page_device_country
   - name: raw_spend
     tables:
       - name: meta
