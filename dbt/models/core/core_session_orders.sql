@@ -1,8 +1,8 @@
-{{ config(materialized='incremental', incremental_strategy='merge', unique_key='order_key', tags=['hourly']) }}
+{{ config(materialized='incremental', incremental_strategy='merge', unique_key='order_key', tags=['ga4']) }}
 -- Fix round 2, item 1 (controller): this was a plain (always-full-rescan) table, costing
 -- ~8.9 GiB x 24 runs/day under the `hourly` tag -- far over the pipeline's "well under $5/month"
 -- budget. Incremental now: a first build / full-refresh still scans from `ga4_start_date`, but an
--- incremental run only scans the last 3 days of `_table_suffix` (intraday tables stay excluded by
+-- incremental run only scans the last `ga4_lookback_days` (default 3) days of `_table_suffix` (intraday tables stay excluded by
 -- the `^\d{8}$` filter). Within that scan, the earliest purchase event per order_key wins (same
 -- double-fire correction as before, with `session_key` added as a tiebreaker for determinism);
 -- then any order_key already present in `{{ this }}` is dropped before the merge, so a stored row
@@ -16,7 +16,7 @@ with purchases as (
   from {{ source('ga4', 'events') }}
   where event_name = 'purchase' and regexp_contains(_table_suffix, r'^\d{8}$')
   {% if is_incremental() %}
-    and _table_suffix >= format_date('%Y%m%d', date_sub(current_date(), interval 3 day))
+    and _table_suffix >= format_date('%Y%m%d', date_sub(current_date(), interval {{ var('ga4_lookback_days') | int }} day))
   {% else %}
     and _table_suffix >= format_date('%Y%m%d', date('{{ var("ga4_start_date") }}'))
   {% endif %}

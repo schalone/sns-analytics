@@ -1,5 +1,5 @@
-{{ config(materialized='incremental', incremental_strategy='insert_overwrite', partition_by={'field': 'session_date', 'data_type': 'date'}, tags=['hourly']) }}
-{% set lookback = 3 %}
+{{ config(materialized='incremental', incremental_strategy='insert_overwrite', partition_by={'field': 'session_date', 'data_type': 'date'}, tags=['ga4']) }}
+{% set lookback = var('ga4_lookback_days') | int %}  {#- final-review I15a: was a literal 3 #}
 -- Ruling 3 (controller): insert_overwrite only replaces the partitions present in this query's
 -- output. A session that starts the day before the incremental window opens can have tail events
 -- land inside the window; reading events only from `lookback` days back would split that session
