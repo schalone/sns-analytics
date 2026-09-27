@@ -17,6 +17,9 @@ vars:
   # core_session_orders) re-read on an incremental run. After an outage longer than this, rebuild with
   # dbt build --select core_sessions core_session_orders --vars '{ga4_lookback_days: N}'
   ga4_lookback_days: 3
+  # Final-review I11: sources treated as phantom referrals in core_sessions (a sign-in or payment round trip
+  # that GA4 records as a new referral session). Any source ending in '.stripe.com' is also phantom.
+  phantom_referral_sources: ['accounts.google.com', 'checkout.stripe.com']
   # Controller ruling (Tasks 13-14): the `google_ads` dataset has no tables until a human
   # authorises the BigQuery Data Transfer. While false, every reference to a `google_ads` source
   # in core_ad_spend.sql and mart_paid_performance.sql is replaced by a typed empty select, so the

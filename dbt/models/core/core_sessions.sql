@@ -26,13 +26,15 @@ with ev as (
     (select value.int_value from unnest(event_params) where key = 'ga_session_id') as ga_session_id,
     event_name, event_timestamp, parse_date('%Y%m%d', event_date) as event_date,
     (select value.string_value from unnest(event_params) where key = 'page_location') as page_location,
-    (select value.string_value from unnest(event_params) where key = 'source') as ep_source,
-    (select value.string_value from unnest(event_params) where key = 'medium') as ep_medium,
-    (select value.string_value from unnest(event_params) where key = 'campaign') as ep_campaign,
+    {{ unset_to_null("(select value.string_value from unnest(event_params) where key = 'source')") }} as ep_source,
+    {{ unset_to_null("(select value.string_value from unnest(event_params) where key = 'medium')") }} as ep_medium,
+    {{ unset_to_null("(select value.string_value from unnest(event_params) where key = 'campaign')") }} as ep_campaign,
     (select coalesce(value.int_value, safe_cast(value.string_value as int64)) from unnest(event_params) where key = 'session_engaged') as session_engaged,
-    session_traffic_source_last_click.manual_campaign.source as lc_source,
-    session_traffic_source_last_click.manual_campaign.medium as lc_medium,
-    session_traffic_source_last_click.manual_campaign.campaign_name as lc_campaign,
+    -- Final-review I11a: '(not set)' / '' are NULL before any coalesce, so the fallback chain is
+    -- last-click -> event params -> '(direct)' / '(none)' (63k sessions used to stop at '(not set)' -> Other).
+    {{ unset_to_null('session_traffic_source_last_click.manual_campaign.source') }} as lc_source,
+    {{ unset_to_null('session_traffic_source_last_click.manual_campaign.medium') }} as lc_medium,
+    {{ unset_to_null('session_traffic_source_last_click.manual_campaign.campaign_name') }} as lc_campaign,
     session_traffic_source_last_click.google_ads_campaign.campaign_id as lc_google_ads_campaign_id,
     collected_traffic_source.gclid as gclid,
     device.category as device_category, geo.country, geo.region, geo.city
@@ -60,15 +62,22 @@ sess as (
   from ev where ga_session_id is not null
   group by 1, 2
 ),
+flagged as (
+  -- Final-review I11b/c: phantom referrals are every source in var('phantom_referral_sources') (default
+  -- accounts.google.com, checkout.stripe.com) plus any *.stripe.com source -- the Stripe Checkout round trip
+  -- otherwise owns the purchase as a Referral. Never NULL.
+  select s.*, {{ is_phantom_referral('raw_source') }} as is_phantom_referral
+  from sess s
+),
 fixed as (
-  -- phantom accounts.google.com referral: inherit the same user's previous non-phantom session within 30 minutes, else direct
-  select s.*,
-    raw_source = 'accounts.google.com' as is_phantom_referral,
+  -- phantom referral: inherit the same user's previous non-phantom session within 30 minutes, else direct
+  select f.*,
     lag(raw_source) over (partition by user_pseudo_id order by session_start_at) as prev_source,
     lag(raw_medium) over (partition by user_pseudo_id order by session_start_at) as prev_medium,
     lag(campaign) over (partition by user_pseudo_id order by session_start_at) as prev_campaign,
-    lag(session_start_at) over (partition by user_pseudo_id order by session_start_at) as prev_start
-  from sess s
+    lag(session_start_at) over (partition by user_pseudo_id order by session_start_at) as prev_start,
+    lag(is_phantom_referral) over (partition by user_pseudo_id order by session_start_at) as prev_is_phantom
+  from flagged f
 ),
 resolved as (
   -- Fix round 2, item 2 (controller): one `inherits_prev` boolean, used consistently for
@@ -76,13 +85,15 @@ resolved as (
   -- up with a self-contradicting mix (previously: source/medium fell back to
   -- '(direct)'/'(none)' but campaign kept its own raw value, e.g. '(referral)').
   select *,
-    is_phantom_referral and prev_source is not null and prev_source != 'accounts.google.com'
+    is_phantom_referral and prev_source is not null and not coalesce(prev_is_phantom, false)
       and timestamp_diff(session_start_at, prev_start, minute) <= 30 as inherits_prev
   from fixed
 ),
 final as (
   select session_key, user_pseudo_id, session_start_at, session_date, landing_page,
-    regexp_extract(landing_page, r'^https?://[^/]+(/[^?#]*)') as landing_page_path,
+    -- Final-review I11d: a bare-domain URL (no path, optionally a query/fragment) lands on '/'.
+    coalesce(regexp_extract(landing_page, r'^https?://[^/?#]+(/[^?#]*)'),
+             if(regexp_contains(landing_page, r'^https?://[^/?#]+([?#].*)?$'), '/', null)) as landing_page_path,
     {{ url_decode("regexp_extract(landing_page, r'[?&]q=([^&#]+)')") }} as landing_query_q,
     case when inherits_prev then prev_source
          when is_phantom_referral then '(direct)'

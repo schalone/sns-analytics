@@ -26,7 +26,8 @@ Known approximations versus the GA4 version (documented here, not hidden in the 
 * **"orders" means ticket orders, "revenue" means net revenue.** `ticket_orders` (ticket sales only, excludes
   gift cards and other order types) is this pipeline's closest analogue to GA4's deduplicated
   `ecommercePurchases` count; `net_revenue` (gross less refunds) is the closest analogue to GA4's
-  `purchaseRevenue`. Both are already deduplicated by the dbt models that build `core_orders` /
+  `purchaseRevenue`. Average order value divides ticket orders' net revenue (`ticket_net_revenue`) by ticket
+  orders, so numerator and denominator are the same population. All are already deduplicated by the dbt models that build `core_orders` /
   `core_session_orders` (one row per `order_key`), so there is no need to replicate the GA4 version's own
   transaction-id dedup logic here.
 * **Sessions include phantom-referral sessions.** GA4's `accounts.google.com` phantom referral is excluded
@@ -62,7 +63,9 @@ from google.cloud import bigquery
 
 PROJECT = "sipandscript"
 
-CHANNELS = ["Organic Search", "Paid Search", "Paid Social", "Organic Social", "Direct", "Email", "Referral"]
+# Final-review I11: "Other" (sessions whose source/medium match no rule) and "Unattributed" (orders with no GA4
+# session) are listed too, so the channel lines always add up to the headline.
+CHANNELS = ["Organic Search", "Paid Search", "Paid Social", "Organic Social", "Direct", "Email", "Referral", "Other", "Unattributed"]
 DROP_FLAG = 0.25          # flag a headline metric down more than 25%, matching ga_report.py's DROP_FLAG
 
 
@@ -84,7 +87,9 @@ def _rows(bq, sql, **params):
 
 # --------------------------------------------------------------------------------- data functions ---
 def headline_dict(bq, start, end):
-    """{"sessions", "users", "purchases", "revenue", "unreliable_ga4"} totalled over [start, end] inclusive.
+    """{"sessions", "users", "purchases", "revenue", "ticket_revenue", "unreliable_ga4"} totalled over [start, end]
+    inclusive. "revenue" is net revenue of every order; "ticket_revenue" is ticket orders' net revenue (the AOV
+    numerator, same population as "purchases").
 
     Sums across every channel_group/metro_key row for the range: session rows always carry
     `metro_key IS NULL` and metro rows carry orders/revenue only, so summing every row (not just
@@ -95,21 +100,22 @@ def headline_dict(bq, start, end):
     render a CVR for a window where this is true (see this module's docstring)."""
     rows = _rows(bq, f"""
       select sum(sessions) as sessions, sum(ticket_orders) as purchases, sum(net_revenue) as revenue,
-        logical_or(unreliable_ga4) as unreliable_ga4
+        sum(ticket_net_revenue) as ticket_revenue, logical_or(unreliable_ga4) as unreliable_ga4
       from `{PROJECT}.mart.mart_daily_kpis`
       where business_date between @start_date and @end_date
     """, start_date=start, end_date=end)
     r = rows[0] if rows else {}
     sessions = r.get("sessions") or 0
     return {"sessions": sessions, "users": sessions, "purchases": r.get("purchases") or 0,
-            "revenue": r.get("revenue") or 0, "unreliable_ga4": bool(r.get("unreliable_ga4"))}
+            "revenue": r.get("revenue") or 0, "ticket_revenue": r.get("ticket_revenue") or 0,
+            "unreliable_ga4": bool(r.get("unreliable_ga4"))}
 
 
 def channels(bq, start, end):
     """{channel_name: (sessions, purchases, revenue)} over [start, end] inclusive, one entry for every name in
-    `CHANNELS` (zero-filled if absent from the query result), matching the GA4 version's fixed channel set.
-    Any `channel_group` outside that fixed set (e.g. "Other", "Unattributed") is dropped, exactly as the GA4
-    version silently drops any `sessionDefaultChannelGroup` it doesn't recognise.
+    `CHANNELS` (zero-filled if absent from the query result). The set includes "Other" and "Unattributed"
+    (orders with no GA4 session), so the channel lines add up to the headline; any other `channel_group` the
+    mart might grow is still dropped.
 
     No `metro_key` filter, for the same reason as `headline_dict`: session rows (the only rows with sessions)
     always carry `metro_key IS NULL`, and every order row -- metro-attributed or not -- must be counted once."""
@@ -206,8 +212,14 @@ def _cvr_str(d):
     return f"{cvr:.2%}"
 
 
+def _aov(d):
+    """Average ticket order value: ticket orders' net revenue / ticket orders, so numerator and denominator are
+    the same population (the headline "revenue" also includes gift-card and other orders)."""
+    return d.get("ticket_revenue", 0) / d["purchases"] if d["purchases"] else 0
+
+
 def _headline(cur, prev):
-    aov = lambda d: d["revenue"] / d["purchases"] if d["purchases"] else 0
+    aov = _aov
     parts = [f"{cur['sessions']:,} sessions ({_pct(cur['sessions'], prev['sessions'])})",
               f"{cur['purchases']} orders ({_pct(cur['purchases'], prev['purchases'])})",
               f"{_money(cur['revenue'])} ({_pct(cur['revenue'], prev['revenue'])})",
@@ -216,7 +228,7 @@ def _headline(cur, prev):
 
 
 def _headline_fields(cur, prev):
-    aov = lambda d: d["revenue"] / d["purchases"] if d["purchases"] else 0
+    aov = _aov
     return [("Sessions", f"{cur['sessions']:,} ({_pct(cur['sessions'], prev['sessions'])})"),
             ("Orders", f"{cur['purchases']} ({_pct(cur['purchases'], prev['purchases'])})"),
             ("Revenue", f"{_money(cur['revenue'])} ({_pct(cur['revenue'], prev['revenue'])})"),

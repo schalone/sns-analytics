@@ -63,7 +63,7 @@ class ScriptedBq:
         return _Job(rows)
 
 
-ALL_CHANNELS = ["Organic Search", "Paid Search", "Paid Social", "Organic Social", "Direct", "Email", "Referral"]
+ALL_CHANNELS = ["Organic Search", "Paid Search", "Paid Social", "Organic Social", "Direct", "Email", "Referral", "Other", "Unattributed"]
 
 DATE_LITERAL = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -79,14 +79,14 @@ def test_headline_dict_shape_and_keys():
     bq = FakeBqClient()
     bq.query_results.append([{"sessions": 1200, "purchases": 31, "revenue": 2790.5, "unreliable_ga4": False}])
     d = w.headline_dict(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
-    assert d == {"sessions": 1200, "users": 1200, "purchases": 31, "revenue": 2790.5, "unreliable_ga4": False}
+    assert d == {"sessions": 1200, "users": 1200, "purchases": 31, "revenue": 2790.5, "ticket_revenue": 0, "unreliable_ga4": False}
 
 
 def test_headline_dict_treats_missing_row_as_zero():
     bq = FakeBqClient()
     bq.query_results.append([{"sessions": None, "purchases": None, "revenue": None, "unreliable_ga4": None}])
     d = w.headline_dict(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
-    assert d == {"sessions": 0, "users": 0, "purchases": 0, "revenue": 0, "unreliable_ga4": False}
+    assert d == {"sessions": 0, "users": 0, "purchases": 0, "revenue": 0, "ticket_revenue": 0, "unreliable_ga4": False}
 
 
 def test_headline_dict_returns_unreliable_ga4_true_when_flagged():
@@ -134,16 +134,34 @@ def test_channels_shape_includes_every_fixed_channel_even_if_zero():
     assert ch["Email"] == (0, 0, 0.0)
 
 
-def test_channels_ignores_channel_groups_outside_the_fixed_set():
+def test_channels_include_other_and_unattributed_and_ignore_unknown_groups():
     bq = FakeBqClient()
     bq.query_results.append([
         {"channel_group": "Other", "sessions": 673, "purchases": 0, "revenue": 0.0},
         {"channel_group": "Unattributed", "sessions": 0, "purchases": 2, "revenue": 130.0},
         {"channel_group": "Direct", "sessions": 274, "purchases": 0, "revenue": 0.0},
+        {"channel_group": "Something New", "sessions": 5, "purchases": 0, "revenue": 0.0},
     ])
     ch = w.channels(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
     assert set(ch) == set(ALL_CHANNELS)
-    assert ch["Direct"] == (274, 0, 0.0)
+    assert ch["Other"] == (673, 0, 0.0) and ch["Unattributed"] == (0, 2, 130.0) and ch["Direct"] == (274, 0, 0.0)
+
+
+def test_headline_dict_sums_ticket_net_revenue_for_aov():
+    bq = FakeBqClient()
+    bq.query_results.append([{"sessions": 100, "purchases": 4, "revenue": 500.0, "ticket_revenue": 300.0, "unreliable_ga4": False}])
+    d = w.headline_dict(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
+    assert "sum(ticket_net_revenue)" in bq.queries[0][0]
+    assert d["ticket_revenue"] == 300.0
+
+
+def test_aov_divides_ticket_revenue_by_ticket_orders():
+    """Revenue includes gift-card orders; AOV must use the ticket-only numerator so it matches the ticket-order
+    denominator."""
+    cur = {"sessions": 100, "purchases": 4, "revenue": 500.0, "ticket_revenue": 300.0, "unreliable_ga4": False}
+    prev = {"sessions": 100, "purchases": 0, "revenue": 50.0, "ticket_revenue": 0, "unreliable_ga4": False}
+    fields = dict(w._headline_fields(cur, prev))
+    assert fields["Avg order"] == "$75 (was $0)"
 
 
 def test_channels_groups_by_channel_group_without_metro_filter():
