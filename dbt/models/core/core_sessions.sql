@@ -105,7 +105,7 @@ final as (
          when is_phantom_referral then '(direct)'
          else campaign end as campaign,
     google_ads_campaign_id, gclid, gclid is not null as has_gclid, engaged, page_views, device_category, country, region, city, is_phantom_referral,
-    session_date < date('{{ var("launch_date") }}') as pre_launch
+    {{ platform_era_of_date('session_date') }} as platform_era
   from resolved
 )
 select final.*, {{ channel_group('source', 'medium', 'campaign', 'has_gclid') }} as default_channel_group

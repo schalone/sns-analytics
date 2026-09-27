@@ -57,7 +57,8 @@ select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.campaign_name_
   coalesce(g.sessions, so.sessions, 0) as sessions, coalesce(g.orders, so.orders, 0) as orders, coalesce(g.seats, so.seats, 0) as seats,
   coalesce(g.net_revenue, so.net_revenue, 0) as net_revenue,
   safe_divide(coalesce(g.net_revenue, so.net_revenue, 0), nullif(sp.spend, 0)) as roas,
-  safe_divide(sp.spend, nullif(coalesce(g.orders, so.orders, 0), 0)) as cpa
+  safe_divide(sp.spend, nullif(coalesce(g.orders, so.orders, 0), 0)) as cpa,
+  {{ platform_era_of_date('sp.date') }} as platform_era
 from {{ ref('core_ad_spend') }} sp
 left join google_agg g on sp.platform = 'google' and g.date = sp.date and g.campaign_id = sp.campaign_id
 left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform and so.campaign_name_norm = sp.campaign_name_norm

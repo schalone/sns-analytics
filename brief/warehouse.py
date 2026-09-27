@@ -36,8 +36,8 @@ Known approximations versus the GA4 version (documented here, not hidden in the 
   to the inherited prior source, else Direct, at the model layer (see `core_sessions.sql`) rather than
   dropping them, so warehouse-sourced session totals and channel splits will not match the GA4 version
   exactly even once orders are flowing (see `brief/README.md`).
-* **`pre_launch` is never referenced.** A later plan renames that mart column to `platform_era`; every query
-  here sums across all rows regardless of that column so it survives the rename untouched.
+* **`platform_era` is never referenced.** That mart column was renamed from `pre_launch`; every query
+  here sums across all rows regardless of that column, so it was unaffected by the rename.
 * **`metro_key` is never filtered on for totals.** Every session row in `mart_daily_kpis` carries
   `metro_key IS NULL`, and metro rows carry orders/revenue only (see `mart_daily_kpis.sql`). Summing every
   row of a date range therefore yields that range's true totals without double-counting or dropping

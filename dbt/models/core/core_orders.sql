@@ -6,7 +6,8 @@
 -- the last three days before cutover ($3,120.37): paid orders the archive never saw completed. They count as paid
 -- alongside `completed` and `refunded`. The archive ends at cutover, so no archive-side date filter is applied:
 -- 13 completed orders dated 2026-06-19 (New York) were lost to it while their CMS copies are excluded as
--- `wordpressImport`. `pre_launch` is still business_date < launch_date.
+-- `wordpressImport`. `platform_era` is by source_system (woocommerce -> legacy_event_tickets, else
+-- bronco), not business_date, so this archive/CMS split has no bearing on it.
 --
 -- Final-review I6: CMS literals are the CMS's own spellings (sns-analytics-export-api, read-only):
 --   order statuses counted as paid: Paid, Partial Refund, Refunded (WordPressImportService.IsPaidOrderStatus,
@@ -101,6 +102,6 @@ select
   gross_revenue - refunded_amount as net_revenue,
   seats, promo_code, affiliate_key, member_key, customer_hash, billing_city, billing_state, billing_zip, billing_metro_key,
   stripe_checkout_session_id, updated_at,
-  business_date < date('{{ var("launch_date") }}') as pre_launch,
+  {{ platform_era_of_source('source_system') }} as platform_era,
   row_number() over (partition by customer_hash order by created_at) = 1 and customer_hash is not null as is_first_order
 from with_metro

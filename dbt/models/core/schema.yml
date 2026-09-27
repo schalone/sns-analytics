@@ -40,11 +40,23 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: platform_era
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [legacy_event_tickets, bronco]
 
   - name: core_order_items
     columns:
       - name: order_item_key
         data_tests: [unique, not_null]
+      - name: platform_era
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [legacy_event_tickets, bronco]
 
   - name: core_tickets
     columns:
@@ -58,11 +70,23 @@ models:
                 field: event_key
               config:
                 severity: warn
+      - name: platform_era
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [legacy_event_tickets, bronco]
 
   - name: core_refunds
     columns:
       - name: refund_key
         data_tests: [unique, not_null]
+      - name: platform_era
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [legacy_event_tickets, bronco]
 
   - name: core_sessions
     columns:
@@ -73,6 +97,12 @@ models:
           - accepted_values:
               arguments:
                 values: [Paid Search, Paid Social, Organic Social, Organic Search, Email, Direct, Referral, Other]
+      - name: platform_era
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [legacy_event_tickets, bronco]
 
   - name: core_session_orders
     columns:

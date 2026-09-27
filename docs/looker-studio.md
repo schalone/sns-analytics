@@ -16,7 +16,7 @@ connector, twice:
    - Project `sipandscript`, dataset `mart`, table `mart_daily_kpis`.
    - Sharing: **"Viewer's credentials" OFF**, **"Owner's credentials" ON**, so viewers use the report
      owner's BigQuery access and need no grant of their own.
-   - Columns: `business_date` (DATE), `pre_launch` (BOOLEAN), `channel_group` (TEXT), `metro_key` (TEXT,
+   - Columns: `business_date` (DATE), `platform_era` (TEXT: `legacy_event_tickets`/`bronco`), `channel_group` (TEXT), `metro_key` (TEXT,
      nullable), `sessions`, `engaged_sessions`, `orders`, `ticket_orders`, `seats` (NUMBER),
      `gross_revenue`, `net_revenue`, `ticket_net_revenue` (NUMBER, currency), `channel_ticket_orders`
      (NUMBER, NULL on metro rows), `cvr` (NUMBER, nullable), `aov` (NUMBER, currency, nullable),
@@ -32,7 +32,7 @@ Name the report **"Sip & Script — Website & Sales"** (Create → Report, add b
 
 ## 2. How `mart_daily_kpis` rows add up — read this first
 
-One row per `business_date` × `pre_launch` × `channel_group` × `metro_key`.
+One row per `business_date` × `platform_era` × `channel_group` × `metro_key`.
 
 - **Orders, ticket orders, seats, gross/net revenue, ticket net revenue and new customers** sit on exactly
   one row each: the row of the order's metro (its event's metro, else its billing zip's metro), or the
@@ -41,7 +41,7 @@ One row per `business_date` × `pre_launch` × `channel_group` × `metro_key`.
 - **Sessions and engaged sessions** sit only on `metro_key IS NULL` rows (GA4 has no metro). Summing them
   over all rows gives the same answer as summing the null-metro rows.
 - **CVR** must use the per-channel total of ticket orders, not the null-metro row's own `ticket_orders`.
-  That total is `channel_ticket_orders`: the ticket orders of the date, `pre_launch` and channel summed
+  That total is `channel_ticket_orders`: the ticket orders of the date, `platform_era` and channel summed
   over **all** metro values, carried on the null-metro row and NULL on metro rows. So over any set of rows,
   `SUM(channel_ticket_orders) / SUM(sessions)` is the CVR of the null-metro rows — the correct one — with
   no filter needed.

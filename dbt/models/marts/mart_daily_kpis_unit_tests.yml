@@ -10,13 +10,13 @@ unit_tests:
     given:
       - input: ref('core_sessions')
         rows:
-          - {session_key: s1, session_date: 2026-09-01, pre_launch: false, default_channel_group: Organic Search, engaged: true}
-          - {session_key: s2, session_date: 2026-09-01, pre_launch: false, default_channel_group: Organic Search, engaged: false}
+          - {session_key: s1, session_date: 2026-09-01, platform_era: bronco, default_channel_group: Organic Search, engaged: true}
+          - {session_key: s2, session_date: 2026-09-01, platform_era: bronco, default_channel_group: Organic Search, engaged: false}
       - input: ref('core_orders')
         rows:
-          - {order_key: o1, business_date: 2026-09-01, pre_launch: false, order_type: ticket, seats: 1, gross_revenue: 50.0, net_revenue: 50.0, is_first_order: true, billing_metro_key: null}
-          - {order_key: o2, business_date: 2026-09-01, pre_launch: false, order_type: ticket, seats: 2, gross_revenue: 90.0, net_revenue: 90.0, is_first_order: false, billing_metro_key: m-dallas}
-          - {order_key: o3, business_date: 2026-09-01, pre_launch: false, order_type: ticket, seats: 1, gross_revenue: 45.0, net_revenue: 45.0, is_first_order: false, billing_metro_key: m-boston}
+          - {order_key: o1, business_date: 2026-09-01, platform_era: bronco, order_type: ticket, seats: 1, gross_revenue: 50.0, net_revenue: 50.0, is_first_order: true, billing_metro_key: null}
+          - {order_key: o2, business_date: 2026-09-01, platform_era: bronco, order_type: ticket, seats: 2, gross_revenue: 90.0, net_revenue: 90.0, is_first_order: false, billing_metro_key: m-dallas}
+          - {order_key: o3, business_date: 2026-09-01, platform_era: bronco, order_type: ticket, seats: 1, gross_revenue: 45.0, net_revenue: 45.0, is_first_order: false, billing_metro_key: m-boston}
       - input: ref('core_session_orders')
         rows:
           - {order_key: o1, session_key: s1}

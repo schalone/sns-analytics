@@ -213,8 +213,10 @@ change must be re-applied to history (it was done once on 2026-09-27 for the att
   `(direct)` / `(none)`. Changing the list needs a `--full-refresh` of the two GA4 models to apply to
   history.
 - **`ga4_start_date`** (default `2025-01-01`): the floor of a first build / full refresh of the GA4 models.
-- **`launch_date`** (`2026-06-19`): the WooCommerce → webapp cutover; drives `pre_launch` on orders and
-  sessions and the start of `mart_orders_reconciliation`.
+- **`launch_date`** (`2026-06-19`): the WooCommerce → webapp cutover; drives `platform_era` on sessions
+  (by `session_date`) and the start of `mart_orders_reconciliation`. Orders (and tickets/refunds/order
+  items keyed to them) get `platform_era` from `source_system` instead (`woocommerce` ->
+  `legacy_event_tickets`, else `bronco`), not from `launch_date` directly.
 - **`ads_customer_id`** (`1863952460`): builds the `google_ads` table identifiers.
 
 ## Secret rotation
