@@ -42,6 +42,17 @@ Known approximations versus the GA4 version (documented here, not hidden in the 
   metro-attributed orders; filtering to `metro_key IS NULL` would silently undercount orders and revenue.
   (`landing()` has no `metro_key` at all -- it reads `core_sessions` directly, which carries no metro
   attribution.)
+* **`unreliable_ga4` windows report CVR as unavailable, not a number.** `mart_daily_kpis.unreliable_ga4`
+  flags the 2026-06-19..22 GA4 cutover blackout (`date_flags` seed) by forcing that date's own `cvr` to NULL
+  at the mart layer. `headline_dict` rolls up `logical_or(unreliable_ga4)` for its window and, when true,
+  every place this module renders a CVR for that window (the "CVR ..." segment of `_headline`'s text and the
+  "Conversion rate" row of `_headline_fields`) shows `"n/a"` instead of a computed percentage -- mirroring
+  how the GA4 version's own `pct()` already renders an unavailable comparison as `"n/a"`. Sessions, orders and
+  revenue are still shown as normal even when a window is flagged (only CVR is undefined by construction; the
+  other three are real counts, not ratios). A window flagged this way also adds
+  `"⚠ window includes dates with unreliable GA4 tracking — sessions and CVR not comparable"` to `flags()`.
+  `daily_series` deliberately does **not** consult this flag -- its per-day sessions/orders feed the brief's
+  chart, which shows what was actually recorded for every day regardless of tracking reliability.
 """
 from __future__ import annotations
 
@@ -73,19 +84,25 @@ def _rows(bq, sql, **params):
 
 # --------------------------------------------------------------------------------- data functions ---
 def headline_dict(bq, start, end):
-    """{"sessions", "users", "purchases", "revenue"} totalled over [start, end] inclusive.
+    """{"sessions", "users", "purchases", "revenue", "unreliable_ga4"} totalled over [start, end] inclusive.
 
     Sums across every channel_group/metro_key row for the range: session rows always carry
     `metro_key IS NULL` and metro rows carry orders/revenue only, so summing every row (not just
-    `metro_key IS NULL` rows) gives the range's true totals without dropping metro-attributed orders."""
+    `metro_key IS NULL` rows) gives the range's true totals without dropping metro-attributed orders.
+
+    `unreliable_ga4` is `logical_or(unreliable_ga4)` across every day in the range -- true if *any* day in
+    this window is flagged (the mart's own `cvr` is NULL on those days for the same reason). Callers must not
+    render a CVR for a window where this is true (see this module's docstring)."""
     rows = _rows(bq, f"""
-      select sum(sessions) as sessions, sum(ticket_orders) as purchases, sum(net_revenue) as revenue
+      select sum(sessions) as sessions, sum(ticket_orders) as purchases, sum(net_revenue) as revenue,
+        logical_or(unreliable_ga4) as unreliable_ga4
       from `{PROJECT}.mart.mart_daily_kpis`
       where business_date between @start_date and @end_date
     """, start_date=start, end_date=end)
     r = rows[0] if rows else {}
     sessions = r.get("sessions") or 0
-    return {"sessions": sessions, "users": sessions, "purchases": r.get("purchases") or 0, "revenue": r.get("revenue") or 0}
+    return {"sessions": sessions, "users": sessions, "purchases": r.get("purchases") or 0,
+            "revenue": r.get("revenue") or 0, "unreliable_ga4": bool(r.get("unreliable_ga4"))}
 
 
 def channels(bq, start, end):
@@ -102,7 +119,7 @@ def channels(bq, start, end):
       where business_date between @start_date and @end_date
       group by 1
     """, start_date=start, end_date=end)
-    out = {c: (0, 0, 0) for c in CHANNELS}
+    out = {c: (0, 0, 0.0) for c in CHANNELS}
     for r in rows:
         name = r.get("channel_group")
         if name in out:
@@ -119,9 +136,15 @@ def landing(bq, start, end, limit=10):
     scope at all here. Joined through to `core_orders` and filtered to `order_type = 'ticket'` so "purchases"
     means the same thing (ticket orders) here as it does everywhere else in this module -- without that join,
     a gift-card or other non-ticket order linked to a session would inflate this count relative to the
-    ticket-order totals shown elsewhere in the same brief."""
+    ticket-order totals shown elsewhere in the same brief.
+
+    Both measures are `count(distinct ...)`, never `count(*)`: `core_session_orders` holds one row per
+    *order*, so a session that produced more than one order joins to more than one row here, and `count(*)`
+    would count that single session once per order it produced (fan-out). `count(distinct s.session_key)`
+    counts the session once regardless of how many orders it joins to; `count(distinct ... order_key ...)`
+    counts each ticket order once regardless of which of a session's joined rows it appears on."""
     rows = _rows(bq, f"""
-      select s.landing_page_path as page, count(*) as sessions,
+      select s.landing_page_path as page, count(distinct s.session_key) as sessions,
         count(distinct case when o.order_type = 'ticket' then so.order_key end) as purchases
       from `{PROJECT}.core.core_sessions` s
       left join `{PROJECT}.core.core_session_orders` so using (session_key)
@@ -155,10 +178,12 @@ def daily_series(bq, today, days=28):
 
 
 # --------------------------------------------------------------------------------- text (ported from ga_report.py) ---
-# These mirror ga_report.py's pure formatting functions (pct/headline/headline_fields/flags/build_text)
-# exactly, so `report_data`'s "fields"/"flags"/"text" shapes match key by key. They are re-implemented here,
-# not imported from ga_report.py, so this module has no import-time dependency on a module that lives in a
-# different repository and is only vendored alongside it at deploy time (see brief/README.md).
+# Copied from .superpowers/sdd/2026-09-26-analytics-pipeline/brief-ref/ga_report.py (functions pct/headline/
+# headline_fields/flags/build_text), so `report_data`'s "fields"/"flags"/"text" shapes match key by key. They
+# are re-implemented here, not imported from ga_report.py, so this module has no import-time dependency on a
+# module that lives in a different repository and is only vendored alongside it at deploy time (see
+# brief/README.md). If that reference file's wording, thresholds (e.g. DROP_FLAG) or field labels change,
+# these must be manually re-synced -- there is no shared import to keep them honest.
 def _pct(cur, prev):
     if not prev:
         return "n/a" if not cur else "new"
@@ -170,23 +195,32 @@ def _money(x):
     return f"${x:,.0f}"
 
 
+def _cvr_str(d):
+    """CVR as a formatted percentage, or "n/a" (matching `_pct`'s own convention for an unavailable
+    comparison) when `d`'s window includes a date the mart flags `unreliable_ga4` -- the mart itself reports
+    that day's `cvr` as NULL, so a ratio computed from this window's sessions/purchases would be misleading,
+    not just imprecise."""
+    if d.get("unreliable_ga4"):
+        return "n/a"
+    cvr = d["purchases"] / d["sessions"] if d["sessions"] else 0
+    return f"{cvr:.2%}"
+
+
 def _headline(cur, prev):
-    cvr = lambda d: d["purchases"] / d["sessions"] if d["sessions"] else 0
     aov = lambda d: d["revenue"] / d["purchases"] if d["purchases"] else 0
     parts = [f"{cur['sessions']:,} sessions ({_pct(cur['sessions'], prev['sessions'])})",
               f"{cur['purchases']} orders ({_pct(cur['purchases'], prev['purchases'])})",
               f"{_money(cur['revenue'])} ({_pct(cur['revenue'], prev['revenue'])})",
-              f"CVR {cvr(cur):.2%} (was {cvr(prev):.2%})", f"AOV {_money(aov(cur))} (was {_money(aov(prev))})"]
+              f"CVR {_cvr_str(cur)} (was {_cvr_str(prev)})", f"AOV {_money(aov(cur))} (was {_money(aov(prev))})"]
     return " · ".join(parts)
 
 
 def _headline_fields(cur, prev):
-    cvr = lambda d: d["purchases"] / d["sessions"] if d["sessions"] else 0
     aov = lambda d: d["revenue"] / d["purchases"] if d["purchases"] else 0
     return [("Sessions", f"{cur['sessions']:,} ({_pct(cur['sessions'], prev['sessions'])})"),
             ("Orders", f"{cur['purchases']} ({_pct(cur['purchases'], prev['purchases'])})"),
             ("Revenue", f"{_money(cur['revenue'])} ({_pct(cur['revenue'], prev['revenue'])})"),
-            ("Conversion rate", f"{cvr(cur):.2%} (was {cvr(prev):.2%})"),
+            ("Conversion rate", f"{_cvr_str(cur)} (was {_cvr_str(prev)})"),
             ("Avg order", f"{_money(aov(cur))} (was {_money(aov(prev))})")]
 
 
@@ -197,6 +231,8 @@ def _flags(cur, prev):
             out.append(f"⚠ {label} down {_pct(cur[k], prev[k])} vs comparison")
     if cur["sessions"] >= 200 and cur["purchases"] == 0:
         out.append("⚠ zero orders despite traffic — check purchase tracking")
+    if cur.get("unreliable_ga4") or prev.get("unreliable_ga4"):
+        out.append("⚠ window includes dates with unreliable GA4 tracking — sessions and CVR not comparable")
     return out
 
 

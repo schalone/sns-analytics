@@ -77,16 +77,30 @@ def _assert_no_date_literals(queries):
 # --------------------------------------------------------------------------- headline_dict ---
 def test_headline_dict_shape_and_keys():
     bq = FakeBqClient()
-    bq.query_results.append([{"sessions": 1200, "purchases": 31, "revenue": 2790.5}])
+    bq.query_results.append([{"sessions": 1200, "purchases": 31, "revenue": 2790.5, "unreliable_ga4": False}])
     d = w.headline_dict(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
-    assert d == {"sessions": 1200, "users": 1200, "purchases": 31, "revenue": 2790.5}
+    assert d == {"sessions": 1200, "users": 1200, "purchases": 31, "revenue": 2790.5, "unreliable_ga4": False}
 
 
 def test_headline_dict_treats_missing_row_as_zero():
     bq = FakeBqClient()
-    bq.query_results.append([{"sessions": None, "purchases": None, "revenue": None}])
+    bq.query_results.append([{"sessions": None, "purchases": None, "revenue": None, "unreliable_ga4": None}])
     d = w.headline_dict(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
-    assert d == {"sessions": 0, "users": 0, "purchases": 0, "revenue": 0}
+    assert d == {"sessions": 0, "users": 0, "purchases": 0, "revenue": 0, "unreliable_ga4": False}
+
+
+def test_headline_dict_returns_unreliable_ga4_true_when_flagged():
+    bq = FakeBqClient()
+    bq.query_results.append([{"sessions": 100, "purchases": 5, "revenue": 300.0, "unreliable_ga4": True}])
+    d = w.headline_dict(bq, dt.date(2026, 6, 19), dt.date(2026, 6, 22))
+    assert d["unreliable_ga4"] is True
+
+
+def test_headline_dict_query_rolls_up_unreliable_ga4_with_logical_or():
+    bq = FakeBqClient()
+    w.headline_dict(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
+    sql, _ = bq.queries[0]
+    assert "logical_or(unreliable_ga4)" in sql
 
 
 def test_headline_dict_queries_mart_daily_kpis_without_metro_filter():
@@ -117,7 +131,7 @@ def test_channels_shape_includes_every_fixed_channel_even_if_zero():
     ch = w.channels(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
     assert set(ch) == set(ALL_CHANNELS)
     assert ch["Paid Search"] == (10, 1, 65.0)
-    assert ch["Email"] == (0, 0, 0)
+    assert ch["Email"] == (0, 0, 0.0)
 
 
 def test_channels_ignores_channel_groups_outside_the_fixed_set():
@@ -161,6 +175,20 @@ def test_landing_queries_core_sessions_and_binds_limit():
     assert params["start_date"] == dt.date(2026, 9, 24) and params["end_date"] == dt.date(2026, 9, 24)
 
 
+def test_landing_uses_distinct_counts_not_row_counts_to_avoid_join_fanout():
+    """core_session_orders holds one row per ORDER (not per session), so a session that produced more than
+    one order joins to more than one row here; count(*) would count that single session once per order it
+    produced. A fake result can't prove real join-fanout semantics either way (it just returns whatever rows
+    it's told to), so this checks the SQL shape directly -- both measures must be count(distinct ...), and
+    plain count(*) must not appear at all. Verified against real join-fanout behaviour separately, against
+    the live warehouse (see task-15-report.md's fix-round-1 section)."""
+    bq = FakeBqClient()
+    w.landing(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
+    sql, _ = bq.queries[0]
+    assert sql.count("count(distinct") == 2
+    assert "count(*)" not in sql
+
+
 def test_landing_default_limit_is_10():
     bq = FakeBqClient()
     w.landing(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
@@ -202,10 +230,10 @@ def test_report_data_matches_ga_report_structure_key_by_key():
     wk_prev = (dt.date(2026, 9, 12), dt.date(2026, 9, 18))
     bq = ScriptedBq(
         windows={
-            (y_cur, y_cur): [{"sessions": 1000, "purchases": 20, "revenue": 1300.0}],
-            (y_prev, y_prev): [{"sessions": 1200, "purchases": 30, "revenue": 1950.0}],
-            (wk_cur[0], wk_cur[1]): [{"sessions": 7000, "purchases": 140, "revenue": 9100.0}],
-            (wk_prev[0], wk_prev[1]): [{"sessions": 8400, "purchases": 210, "revenue": 13650.0}],
+            (y_cur, y_cur): [{"sessions": 1000, "purchases": 20, "revenue": 1300.0, "unreliable_ga4": False}],
+            (y_prev, y_prev): [{"sessions": 1200, "purchases": 30, "revenue": 1950.0, "unreliable_ga4": False}],
+            (wk_cur[0], wk_cur[1]): [{"sessions": 7000, "purchases": 140, "revenue": 9100.0, "unreliable_ga4": False}],
+            (wk_prev[0], wk_prev[1]): [{"sessions": 8400, "purchases": 210, "revenue": 13650.0, "unreliable_ga4": False}],
         },
         channel_rows=[{"channel_group": "Paid Search", "sessions": 10, "purchases": 1, "revenue": 65.0}],
         landing_rows=[{"page": "/metros/boston/", "sessions": 40, "purchases": 2}],
@@ -242,6 +270,44 @@ def test_report_data_flags_zero_orders_despite_traffic():
     })
     data = w.report_data(bq, today)
     assert any("zero orders despite traffic" in f for f in data["flags"])
+
+
+def test_report_data_flags_and_hides_cvr_when_window_has_unreliable_ga4():
+    today = dt.date(2026, 9, 26)
+    y_cur, y_prev = dt.date(2026, 9, 25), dt.date(2026, 9, 18)
+    wk_cur = (dt.date(2026, 9, 19), dt.date(2026, 9, 25))
+    wk_prev = (dt.date(2026, 9, 12), dt.date(2026, 9, 18))
+    bq = ScriptedBq(windows={
+        (y_cur, y_cur): [{"sessions": 1000, "purchases": 20, "revenue": 1300.0, "unreliable_ga4": True}],
+        (y_prev, y_prev): [{"sessions": 1200, "purchases": 30, "revenue": 1950.0, "unreliable_ga4": False}],
+        (wk_cur[0], wk_cur[1]): [{"sessions": 7000, "purchases": 140, "revenue": 9100.0, "unreliable_ga4": False}],
+        (wk_prev[0], wk_prev[1]): [{"sessions": 8400, "purchases": 210, "revenue": 13650.0, "unreliable_ga4": False}],
+    })
+    data = w.report_data(bq, today)
+    assert any("unreliable GA4 tracking" in f for f in data["flags"])
+    fields = dict(data["fields"])
+    assert fields["Conversion rate"] == "n/a (was 2.50%)"
+    assert "CVR n/a (was 2.50%)" in data["text"]
+    # sessions/orders/revenue must still be real numbers, not suppressed by the flag
+    assert "1,000 sessions" in data["text"] and "20 orders" in data["text"] and "$1,300" in data["text"]
+
+
+def test_report_data_no_unreliable_flag_or_na_cvr_when_window_is_clean():
+    today = dt.date(2026, 9, 26)
+    y_cur, y_prev = dt.date(2026, 9, 25), dt.date(2026, 9, 18)
+    wk_cur = (dt.date(2026, 9, 19), dt.date(2026, 9, 25))
+    wk_prev = (dt.date(2026, 9, 12), dt.date(2026, 9, 18))
+    bq = ScriptedBq(windows={
+        (y_cur, y_cur): [{"sessions": 1000, "purchases": 20, "revenue": 1300.0, "unreliable_ga4": False}],
+        (y_prev, y_prev): [{"sessions": 1200, "purchases": 30, "revenue": 1950.0, "unreliable_ga4": False}],
+        (wk_cur[0], wk_cur[1]): [{"sessions": 7000, "purchases": 140, "revenue": 9100.0, "unreliable_ga4": False}],
+        (wk_prev[0], wk_prev[1]): [{"sessions": 8400, "purchases": 210, "revenue": 13650.0, "unreliable_ga4": False}],
+    })
+    data = w.report_data(bq, today)
+    assert not any("unreliable GA4 tracking" in f for f in data["flags"])
+    fields = dict(data["fields"])
+    assert fields["Conversion rate"] == "2.00% (was 2.50%)"
+    assert "n/a" not in data["text"]
 
 
 def test_report_data_windows_are_bound_parameters_not_string_literals():
@@ -290,5 +356,5 @@ def test_no_query_or_function_body_references_pre_launch():
     import inspect
 
     for fn in (w.headline_dict, w.channels, w.landing, w.daily_series, w.report_data, w._rows,
-               w._pct, w._money, w._headline, w._headline_fields, w._flags, w._build_text):
+               w._pct, w._money, w._cvr_str, w._headline, w._headline_fields, w._flags, w._build_text):
         assert "pre_launch" not in inspect.getsource(fn), f"{fn.__name__} references pre_launch"

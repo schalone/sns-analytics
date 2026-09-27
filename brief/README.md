@@ -35,6 +35,14 @@ approximation versus the GA4 version (in short: "users" is reported as sessions,
 "revenue" means net revenue, and warehouse session totals will not exactly match GA4's once orders resume,
 because the warehouse re-attributes the `accounts.google.com` phantom referral rather than excluding it).
 
+One of those is worth calling out here too: `mart_daily_kpis.unreliable_ga4` flags the 2026-06-19..22 GA4
+cutover blackout, and the mart itself reports that period's `cvr` as NULL. Any brief window (yesterday vs
+same weekday last week, or the 7-vs-7 comparison) that includes one of those dates shows `"CVR n/a"` instead
+of a computed percentage, and adds a `"⚠ window includes dates with unreliable GA4 tracking — sessions and
+CVR not comparable"` line to the brief's flags. Sessions, orders and revenue are still shown as normal for
+that window — only the CVR ratio is suppressed, since it's the one the mart itself can't compute for those
+days. The daily chart (`series`) is unaffected and always shows the days' actual recorded sessions/orders.
+
 ## Applying the patch (in the CMS repo, not here)
 
 From `scripts/google-ads/` in the `sipandscript-sns.webapp.cms` checkout:
@@ -103,6 +111,13 @@ Do **not** flip the env var until all of the following are true:
    have completed (and refreshed `mart_daily_kpis` for "yesterday") before `sns-ga-report-daily` runs, or the
    brief will read a stale or partially-populated day. Confirm the daily job's finish time and the brief's
    schedule don't race before switching.
+4. **Job-failure alerting must be in place before switching.** Unlike the GA4 path, a warehouse query failure
+   (BigQuery outage, IAM misconfiguration, a mart that failed to build) has no fallback: `report_data` doesn't
+   catch it, retry against GA4, or post stale/partial numbers — it simply raises, and the brief job fails to
+   post that day. That's the right failure mode (silently posting wrong numbers would be worse), but only if
+   someone actually notices the job failed. Confirm the Cloud Run job's failure/alerting is wired up (e.g. a
+   Cloud Monitoring alert on job failure, or whatever this job's existing on-call mechanism is) before
+   switching, so a missed morning brief gets noticed the same day rather than days later.
 
-Only after all three hold should `BRIEF_SOURCE=warehouse` be set on the Cloud Run job's deploy command (that
+Only after all four hold should `BRIEF_SOURCE=warehouse` be set on the Cloud Run job's deploy command (that
 step lives in the CMS repo / its deploy docs, not here).
