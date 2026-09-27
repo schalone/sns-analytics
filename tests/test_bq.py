@@ -29,7 +29,28 @@ def test_append_serialises_rows_and_returns_count():
     dest, rows = c.loads[0]
     assert dest == "sipandscript.raw_cms.orders"
     assert rows[0]["key"] == "k1" and rows[0]["updated_at"] == "2026-09-26T01:02:03+00:00"
-    assert json.loads(rows[0]["payload"]) == {"a": 1} and rows[0]["_run_id"] == "run-1"
+    # The value sent for a JSON-typed BigQuery column must be a JSON object, not a pre-serialised
+    # string -- a string value loads as a JSON scalar string (json_type = 'string'), not an object,
+    # and defeats every downstream json_value(payload, '$.field') read. See loaders/common/bq.py.
+    assert rows[0]["payload"] == {"a": 1} and not isinstance(rows[0]["payload"], str)
+    assert rows[0]["_run_id"] == "run-1"
+
+
+def test_append_payload_datetime_and_nested_dict_become_json_native():
+    c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
+    nested_payload = {
+        "when": dt.datetime(2026, 9, 27, 12, 0, tzinfo=UTC),
+        "nested": {"city": "Dallas", "tags": ["a", "b"], "count": 3, "ok": True, "missing": None},
+    }
+    w.append("raw_cms", "orders", [RawRow("k1", dt.datetime(2026, 9, 26, tzinfo=UTC), nested_payload)])
+    _dest, rows = c.loads[0]
+    payload = rows[0]["payload"]
+    assert not isinstance(payload, str)
+    assert payload["when"] == str(dt.datetime(2026, 9, 27, 12, 0, tzinfo=UTC))   # datetime -> plain string via default=str, not left as a datetime
+    assert payload["nested"] == {"city": "Dallas", "tags": ["a", "b"], "count": 3, "ok": True, "missing": None}
+    # The whole row list must be plain-JSON-dumpable without `default=` -- proves nothing non-native
+    # (e.g. a datetime) leaked through into the value handed to the BigQuery client.
+    json.dumps(rows)
 
 
 def test_append_empty_is_noop():

@@ -51,7 +51,7 @@ def test_full_backfill_has_no_created_filter_and_stores_sanitised_payload():
     assert api.Refund.calls[0] == {"limit": 100}
     dest, rows = [l for l in bq.loads if l[0].endswith("raw_stripe.balance_transactions")][0]
     assert rows[0]["key"] == "txn_1" and rows[0]["updated_at"] == "2026-09-25T11:33:20+00:00"
-    raw = rows[0]["payload"]
+    raw = json.dumps(rows[0]["payload"])
     for leaked in ("jane@example.com", "Jane Q Public", "99887", "Order 70123"):
         assert leaked not in raw
     payload = json.loads(raw)

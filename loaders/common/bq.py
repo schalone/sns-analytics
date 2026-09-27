@@ -53,8 +53,16 @@ class RawWriter:
             return 0
         self.ensure_table(dataset, entity)
         loaded_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        # `payload` is a JSON-typed BigQuery column. Loading it via load_table_from_json needs the
+        # column's *value* to already be a JSON-native structure (dict/list/scalar) -- if it's given
+        # a pre-serialised string instead, BigQuery stores that string verbatim as a JSON scalar
+        # string (json_type(payload) = 'string'), not as an object, and every json_value(payload,
+        # '$.field') read downstream returns NULL. Round-trip through json.dumps/json.loads once
+        # here (not passed through as-is) so any non-JSON-native value in the source payload
+        # (datetime, Decimal, ...) is coerced to a plain JSON value first via `default=str`; the
+        # result is a plain dict/list/scalar, safe to hand to the BigQuery client as-is.
         payload = [
-            {"key": r.key, "updated_at": _iso(r.updated_at), "payload": json.dumps(r.payload, default=str),
+            {"key": r.key, "updated_at": _iso(r.updated_at), "payload": json.loads(json.dumps(r.payload, default=str)),
              "_loaded_at": loaded_at, "_run_id": self.run_id}
             for r in rows
         ]
