@@ -17,7 +17,7 @@ ENTITIES = {
         "events", "venues", "metros", "instructors",
     ],
     "raw_stripe": ["balance_transactions", "refunds", "disputes", "payouts"],
-    "raw_gsc": ["page_query", "page_device_country"],
+    "raw_gsc": ["totals", "page", "device_country", "page_query"],   # page_device_country (dropped, I18) keeps its data but is no longer loaded
     "raw_spend": ["meta", "pinterest"],
 }
 
