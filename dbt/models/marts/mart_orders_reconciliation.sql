@@ -10,7 +10,12 @@ with cms as (
 -- The actual type strings must be confirmed against core.core_stripe_transactions once the first
 -- real Stripe load lands (raw_stripe is empty today).
 stripe as (
-  select business_date, countif(type in ('charge', 'payment')) as stripe_charges, sum(net) as stripe_net, sum(fee) as stripe_fees,
+  -- Final-review I12 (only change in this wave; the economic truth layer plan redesigns this mart): stripe_net
+  -- is restricted to charge and refund types so it means what its name says. Refunds are dated by the ORDER's
+  -- business date on the CMS side (core_orders.refunded_amount) but by the refund's own date on the Stripe side;
+  -- that mismatch is left for the second plan to resolve.
+  select business_date, countif(type in ('charge', 'payment')) as stripe_charges,
+    sum(if(type in ('charge', 'payment', 'refund', 'payment_refund'), net, 0)) as stripe_net, sum(fee) as stripe_fees,
     sum(case when type in ('charge', 'payment') then amount else 0 end) + sum(case when type in ('refund', 'payment_refund') then amount else 0 end) as stripe_gross_less_refunds
   from {{ ref('core_stripe_transactions') }} group by 1
 )
