@@ -1,0 +1,65 @@
+version: 2
+
+unit_tests:
+  - name: stripe_transactions_resolve_orders
+    description: Each join key in priority order; refunds inherit the order of their charge; fee rows match nothing.
+    model: core_stripe_transactions
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: "aaaaaaaa-0000-0000-0000-000000000001", order_number: "SNS-26-000001", status: "Paid", checkout_session_key: "cccccccc-0000-0000-0000-000000000001", source: "webapp", updated_at: "2026-09-01 00:00:00"}
+          - {order_key: "aaaaaaaa-0000-0000-0000-000000000002", order_number: "SNS-26-000002", status: "Paid", checkout_session_key: "cccccccc-0000-0000-0000-000000000002", source: "webapp", updated_at: "2026-09-01 00:00:00"}
+          - {order_key: "aaaaaaaa-0000-0000-0000-000000000099", order_number: "SNS-26-000099", status: "Paid", checkout_session_key: "cccccccc-0000-0000-0000-000000000001", source: "wordpressImport", updated_at: "2026-09-02 00:00:00"}
+      - input: ref('stg_stripe__balance_transactions')
+        rows:
+          - {txn_id: t1, type: charge, created_at: "2026-09-10 15:00:00", amount: 126, fee: 4, net: 122, source_object: charge, charge_id: ch_1, checkout_session_key: "cccccccc-0000-0000-0000-000000000001", order_number: "SNS-26-000001", customer_hash: h1}
+          - {txn_id: t2, type: charge, created_at: "2026-09-10 15:00:00", amount: 50, fee: 2, net: 48, source_object: charge, charge_id: ch_2, order_number: "SNS-26-000002", customer_hash: h2}
+          - {txn_id: t3, type: charge, created_at: "2024-05-01 15:00:00", amount: 50, fee: 2, net: 48, source_object: charge, charge_id: ch_3, woo_order_id: "70123", order_ref: "70123", customer_hash: h3}
+          - {txn_id: t4, type: charge, created_at: "2017-05-01 15:00:00", amount: 50, fee: 2, net: 48, source_object: charge, charge_id: ch_4, order_ref: "1234", customer_hash: h4}
+          - {txn_id: t5, type: charge, created_at: "2026-09-10 15:00:00", amount: 10, fee: 1, net: 9, source_object: charge, charge_id: ch_5, adhoc_charge_key: "dddddddd-0000-0000-0000-000000000001", customer_hash: h5}
+          - {txn_id: t6, type: refund, created_at: "2026-09-12 15:00:00", amount: -126, fee: 0, net: -126, source_object: refund, charge_id: ch_1, refund_id: re_1}
+          - {txn_id: t7, type: stripe_fee, created_at: "2026-09-12 15:00:00", amount: -5, fee: 0, net: -5, source_id: fee_1}
+          - {txn_id: t8, type: charge, created_at: "2026-09-10 15:00:00", amount: 10, fee: 1, net: 9, source_object: charge, charge_id: ch_8, checkout_session_key: "cccccccc-0000-0000-0000-00000000ffff"}
+    expect:
+      rows:
+        - {txn_id: t1, order_key: "aaaaaaaa-0000-0000-0000-000000000001", match_method: checkout_session, customer_hash: h1, platform_era: bronco}
+        - {txn_id: t2, order_key: "aaaaaaaa-0000-0000-0000-000000000002", match_method: order_number, customer_hash: h2, platform_era: bronco}
+        - {txn_id: t3, order_key: "woo-70123", match_method: woo_metadata, customer_hash: h3, platform_era: legacy_event_tickets}
+        - {txn_id: t4, order_key: "woo-1234", match_method: woo_description, customer_hash: h4, platform_era: legacy_event_tickets}
+        - {txn_id: t5, order_key: null, match_method: adhoc, customer_hash: h5, platform_era: bronco}
+        - {txn_id: t6, order_key: "aaaaaaaa-0000-0000-0000-000000000001", match_method: checkout_session, customer_hash: h1, platform_era: bronco}
+        - {txn_id: t7, order_key: null, match_method: none, customer_hash: null, platform_era: bronco}
+        - {txn_id: t8, order_key: null, match_method: none, customer_hash: null, platform_era: bronco}
+
+  - name: customer_identity_priority
+    description: cms, then stripe, then cms_import, then propagation through the WooCommerce customer id, then surrogate, then unresolved.
+    model: core_customer_identity
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: "aaaaaaaa-0000-0000-0000-000000000001", source: "webapp", customer_hash: cms_hash}
+          - {order_key: "aaaaaaaa-0000-0000-0000-000000000077", source: "wordpressImport", wordpress_order_id: "102", customer_hash: import_hash}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-101", woo_order_id: "101", woo_customer_id: "0"}
+          - {order_key: "woo-102", woo_order_id: "102", woo_customer_id: "0"}
+          - {order_key: "woo-103", woo_order_id: "103", woo_customer_id: "55"}
+          - {order_key: "woo-104", woo_order_id: "104", woo_customer_id: "55"}
+          - {order_key: "woo-105", woo_order_id: "105", woo_customer_id: "66"}
+          - {order_key: "woo-106", woo_order_id: "106", woo_customer_id: "0"}
+          - {order_key: "woo-107", woo_order_id: "107", woo_customer_id: null}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, order_key: "aaaaaaaa-0000-0000-0000-000000000001", customer_hash: stripe_hash_ignored, created_at: "2026-09-01 00:00:00"}
+          - {txn_id: t2, type: charge, source_object: charge, order_key: "woo-101", customer_hash: stripe_101, created_at: "2024-01-01 00:00:00"}
+          - {txn_id: t3, type: charge, source_object: charge, order_key: "woo-103", customer_hash: stripe_55, created_at: "2024-01-01 00:00:00"}
+    expect:
+      rows:
+        - {order_key: "aaaaaaaa-0000-0000-0000-000000000001", source_system: webapp, customer_hash: cms_hash, identity_source: cms}
+        - {order_key: "woo-101", source_system: woocommerce, customer_hash: stripe_101, identity_source: stripe}
+        - {order_key: "woo-102", source_system: woocommerce, customer_hash: import_hash, identity_source: cms_import}
+        - {order_key: "woo-103", source_system: woocommerce, customer_hash: stripe_55, identity_source: stripe}
+        - {order_key: "woo-104", source_system: woocommerce, customer_hash: stripe_55, identity_source: woo_propagated}
+        - {order_key: "woo-105", source_system: woocommerce, customer_hash: "woo-cust-66", identity_source: woo_surrogate}
+        - {order_key: "woo-106", source_system: woocommerce, customer_hash: null, identity_source: unresolved}
+        - {order_key: "woo-107", source_system: woocommerce, customer_hash: null, identity_source: unresolved}

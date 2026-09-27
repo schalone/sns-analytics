@@ -46,6 +46,8 @@ models:
           - accepted_values:
               arguments:
                 values: [legacy_event_tickets, bronco]
+      - name: identity_source
+        data_tests: [not_null]
 
   - name: core_order_items
     columns:
@@ -148,6 +150,23 @@ models:
     columns:
       - name: txn_id
         data_tests: [unique, not_null]
+      - name: match_method
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [checkout_session, order_number, woo_metadata, woo_description, adhoc, none]
+
+  - name: core_customer_identity
+    columns:
+      - name: order_key
+        data_tests: [unique, not_null]
+      - name: identity_source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [cms, stripe, cms_import, woo_propagated, woo_surrogate, unresolved]
 
   - name: core_search_totals_daily
     description: >

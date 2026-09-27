@@ -26,6 +26,5 @@ select
   json_value(payload, '$.source.metadata.order_id')                    as woo_order_id,
   json_value(payload, '$.source.order_ref')                            as order_ref,
   lower(json_value(payload, '$.source.metadata.AdHocChargeGuid'))      as adhoc_charge_key,
-  json_value(payload, '$.source.customer_hash')                        as customer_hash,
-  cast(null as string) as order_key  -- resolved in core_stripe_transactions
+  json_value(payload, '$.source.customer_hash')                        as customer_hash
 from latest

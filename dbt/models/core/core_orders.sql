@@ -97,11 +97,14 @@ with_metro as (
   left join zip_metro zm on zm.zip_code = left(u.billing_zip, 5)
 )
 select
-  order_key, source_system, order_number, status, created_at, paid_at, business_date, order_type,
-  gross_revenue, discount, service_fee, gift_card_applied, refunded_amount,
-  gross_revenue - refunded_amount as net_revenue,
-  seats, promo_code, affiliate_key, member_key, customer_hash, billing_city, billing_state, billing_zip, billing_metro_key,
-  stripe_checkout_session_id, updated_at,
-  {{ platform_era_of_source('source_system') }} as platform_era,
-  row_number() over (partition by customer_hash order by created_at) = 1 and customer_hash is not null as is_first_order
-from with_metro
+  w.order_key, w.source_system, w.order_number, w.status, w.created_at, w.paid_at, w.business_date, w.order_type,
+  w.gross_revenue, w.discount, w.service_fee, w.gift_card_applied, w.refunded_amount,
+  w.gross_revenue - w.refunded_amount as net_revenue,
+  w.seats, w.promo_code, w.affiliate_key, w.member_key, ci.customer_hash, coalesce(ci.identity_source, 'unresolved') as identity_source,
+  w.billing_city, w.billing_state, w.billing_zip, w.billing_metro_key,
+  w.stripe_checkout_session_id, w.updated_at,
+  {{ platform_era_of_source('w.source_system') }} as platform_era,
+  ci.customer_hash is not null
+    and row_number() over (partition by ci.customer_hash order by w.created_at, w.order_key) = 1 as is_first_order
+from with_metro w
+left join {{ ref('core_customer_identity') }} ci on ci.order_key = w.order_key
