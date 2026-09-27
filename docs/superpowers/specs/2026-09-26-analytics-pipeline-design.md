@@ -98,7 +98,7 @@ Tables are partitioned by `DATE(_loaded_at)` and clustered by `key`. Loaders onl
 
 `ops.load_state (source, entity, watermark TIMESTAMP, cursor STRING, updated_at)` holds one row per loader entity. A loader reads its watermark, fetches from `watermark − overlap`, appends, and writes the new watermark only after the append succeeds. `--full` ignores the watermark.
 
-`ops.run_log (run_id, started_at, finished_at, step, status, rows, message)` gets one row per loader entity and per dbt invocation.
+`ops.run_log (run_id, logged_at, step, status, row_count, message)` gets one row per loader entity and per dbt invocation. (`rows` is a reserved word in GoogleSQL, hence `row_count`.)
 
 ## 5. Loaders
 

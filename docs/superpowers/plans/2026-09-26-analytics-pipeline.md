@@ -480,7 +480,7 @@ class LoadState:
               (source STRING NOT NULL, entity STRING NOT NULL, watermark TIMESTAMP NOT NULL, cursor STRING, updated_at TIMESTAMP NOT NULL)""")
         self._q(f"""
             CREATE TABLE IF NOT EXISTS `{self.project}.ops.run_log`
-              (run_id STRING NOT NULL, logged_at TIMESTAMP NOT NULL, step STRING NOT NULL, status STRING NOT NULL, rows INT64, message STRING)
+              (run_id STRING NOT NULL, logged_at TIMESTAMP NOT NULL, step STRING NOT NULL, status STRING NOT NULL, row_count INT64, message STRING)
             PARTITION BY DATE(logged_at)""")
 
     def get(self, source: str, entity: str) -> Watermark | None:
@@ -502,7 +502,7 @@ class LoadState:
             source=source, entity=entity, watermark=updated_at, cursor=cursor)
 
     def log(self, run_id: str, step: str, status: str, rows: int, message: str = "") -> None:
-        self._q(f"INSERT `{self.project}.ops.run_log` (run_id, logged_at, step, status, rows, message) VALUES (@run_id, CURRENT_TIMESTAMP(), @step, @status, @rows, @message)",
+        self._q(f"INSERT `{self.project}.ops.run_log` (run_id, logged_at, step, status, row_count, message) VALUES (@run_id, CURRENT_TIMESTAMP(), @step, @status, @rows, @message)",
                 run_id=run_id, step=step, status=status, rows=rows, message=message[:2000])
 
     def _q(self, sql: str, **params):
