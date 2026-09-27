@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: core_metros
+    columns:
+      - name: metro_key
+        data_tests: [unique, not_null]
+
+  - name: core_venues
+    columns:
+      - name: venue_key
+        data_tests: [unique, not_null]
+
+  - name: core_instructors
+    columns:
+      - name: instructor_key
+        data_tests: [unique, not_null]
+
+  - name: core_events
+    columns:
+      - name: event_key
+        data_tests: [unique, not_null]
+
+  - name: core_orders
+    columns:
+      - name: order_key
+        data_tests: [unique, not_null]
+      - name: order_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ticket, gift_card, materials, other]
+      - name: source_system
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [webapp, woocommerce]
+      - name: gross_revenue
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+  - name: core_order_items
+    columns:
+      - name: order_item_key
+        data_tests: [unique, not_null]
+
+  - name: core_tickets
+    columns:
+      - name: ticket_key
+        data_tests: [unique, not_null]
+      - name: event_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('core_events')
+                field: event_key
+              config:
+                severity: warn
+
+  - name: core_refunds
+    columns:
+      - name: refund_key
+        data_tests: [unique, not_null]

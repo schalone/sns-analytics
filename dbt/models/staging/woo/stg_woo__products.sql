@@ -13,5 +13,6 @@ select cast(id as string) as woo_product_id, name, type, cast(venue_id as string
     when tribe_wooticket_for_event is not null then 'ticket'
     when lower(name) like '%gift card%' or lower(name) like '%gift certificate%' then 'gift_card'
     else 'materials'
-  end as product_kind
+  end as product_kind,
+  cast(tribe_wooticket_for_event as string) as woo_event_id
 from {{ source('woo', 'products') }}
