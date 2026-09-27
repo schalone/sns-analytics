@@ -98,9 +98,9 @@ A new module `loaders/stripe_sanitize.py` exposes `sanitize(entity, obj) -> dict
 | dispute | id, object, amount, created, currency, status, reason, charge, payment_intent |
 | payout | id, object, amount, created, arrival_date, currency, status, type, method |
 
-- Metadata allowlist: `OrderGuid`, `orderGuid`, `order_guid`, `order_id`, `SeatCount`, `seatCount`, `seat_count`. The exact spellings are confirmed against real charges in the first plan step and the list trimmed to those that exist.
+- Metadata allowlist, confirmed against live charges on 2026-09-27 (§4.5): bronco keys `CheckoutSessionKey`, `OrderNumber`, `EventKey`, `TicketCount`, `AdHocChargeGuid`, `Type`; legacy keys `order_id`, `order_key`. Everything else is dropped, including `customer_email`, `customer_name`, `Customer Email`, `Customer Name`, `signature`, `Summary`, `EventName`, `Venue`, and the integer `OrderId` and `CheckoutSessionId` (database ids never enter the warehouse).
 - `order_ref` is the order number parsed from the charge `description` with the pattern `Order #?(\d+)`. The description itself is not stored.
-- `customer_hash` is `sha256(lower(trim(email)))` in hex, the same rule the CMS uses, taking `billing_details.email` and falling back to `receipt_email`. It is null when neither exists. The email is never written, logged or included in an exception message.
+- `customer_hash` is `sha256(lower(trim(email)))` in hex, the same rule the CMS uses. The email is taken from the first of `billing_details.email`, `receipt_email`, metadata `customer_email`, metadata `Customer Email`. It is null when none exists. The email is never written, logged or included in an exception message.
 
 `RawRow` payloads are built from `sanitize(...)` output only. The raw table contract wording in the base spec §4 changes from "the row exactly as received" to "the row as received, after source-specific sanitising".
 
@@ -114,6 +114,26 @@ A new module `loaders/stripe_sanitize.py` exposes `sanitize(entity, obj) -> dict
 ### 4.4 The key
 
 One restricted, read-only key for the single Stripe account, with read access to balance transactions, charges, payment intents, refunds, disputes and payouts, and nothing else. It lives in Secret Manager as `stripe-restricted-key` for the job and in a git-ignored local environment for laptop runs. It is never committed or pasted into a document.
+
+### 4.5 Live verification (2026-09-27, read-only, one sampled week per period)
+
+| Period | Succeeded charges | Archive orders matched to a charge | Amounts agree | Email available | Order id found in |
+|---|---|---|---|---|---|
+| 2017-10 | 14 | 14 of 14 | 14 of 14 | 13 of 14, in metadata only | description |
+| 2019-10 | 34 | 34 of 34 | 34 of 34 | all | metadata `order_id` |
+| 2021-10 | 273 | 273 of 273 | 273 of 273 | all | metadata `order_id` |
+| 2023-10 | 265 | 265 of 265 | 264 of 265 | all | metadata `order_id` |
+| 2025-10 | 466 | 464 of 464 | 464 of 464 | all | metadata `order_id` |
+| 2026-05 | 366 | 366 of 366 | 366 of 366 | all | metadata `order_id` |
+| 2026-07 (bronco) | 492 | n/a | n/a | all | metadata `CheckoutSessionKey`, `OrderNumber` |
+| 2026-09 (bronco) | 431 | n/a | n/a | all | metadata `CheckoutSessionKey`, `OrderNumber` |
+
+- Stripe history starts in 2016, the same year as the archive. Every sampled legacy order was paid through Stripe; no other gateway appeared.
+- Bronco charges carry **no order GUID**. The base plan's staging model looks for `OrderGuid` and would match nothing. The join keys that exist on both sides are `CheckoutSessionKey` (a GUID, exported on CMS orders) and `OrderNumber`.
+- About 1% of bronco charges are ad hoc charges with `AdHocChargeGuid` and no order. They are not bookings.
+- Refunds carry no metadata and always carry their charge id, so they resolve through the charge.
+- Balance transactions of type `stripe_fee` have no expandable source and belong to no order. They are account-level costs, excluded from booking fees.
+- Observed fee on recent charges is 3.17% of the charged amount, all of type `stripe_fee`.
 
 ## 5. `platform_era`
 
@@ -157,11 +177,11 @@ Resolution order, first match wins:
 | 5 | legacy orders with a WooCommerce customer id, still unresolved | surrogate `woo-cust-<id>` | `woo_surrogate` |
 | 6 | everything else | null | `unresolved` |
 
-`core.orders.customer_hash` is taken from this bridge and `is_first_order` is computed over it. Imported WordPress orders stay excluded from revenue, as in the base spec; they are used only as an identity source. A dbt test reports resolution coverage by era and year and warns below 90% for 2022 onward.
+`core.orders.customer_hash` is taken from this bridge and `is_first_order` is computed over it. Imported WordPress orders stay excluded from revenue, as in the base spec; they are used only as an identity source. A dbt test reports resolution coverage by era and year and warns below 98% for 2019 onward.
 
 ### 6.3 `core.stripe_transactions` — order matching
 
-`order_key` is resolved as: the order GUID from metadata (bronco); else `woo-` + metadata `order_id`; else `woo-` + `order_ref`. New columns: `customer_hash`, `match_method` (`guid` | `woo_metadata` | `woo_description` | `none`). Refund and dispute transactions inherit the order of their charge.
+`order_key` is resolved in this order: the CMS order whose `checkout_session_key` equals metadata `CheckoutSessionKey`; else the CMS order whose `order_number` equals metadata `OrderNumber`; else `woo-` + metadata `order_id`; else `woo-` + `order_ref`. New columns: `customer_hash`, `match_method` (`checkout_session` | `order_number` | `woo_metadata` | `woo_description` | `adhoc` | `none`). Refund and dispute transactions inherit the order of their charge through the charge id. The base plan's `OrderGuid` lookup is removed.
 
 ### 6.4 `core.bookings` — the economics fact
 
@@ -183,7 +203,7 @@ Grain: one ticket order item, that is order × event. Gift-card, materials and o
 | net_distributable, sns_share, instructor_share | §2 |
 | platform_era | era of the sale |
 
-The estimate applies only to orders with no Stripe match: `realized_revenue × legacy_fee_rate + legacy_fee_fixed` per order, with dbt variables `legacy_fee_rate: 0.029` and `legacy_fee_fixed: 0.30`. After the first full load the variables are reset to the observed ratio for matched legacy orders.
+The estimate applies only to orders with no Stripe match: `realized_revenue × legacy_fee_rate + legacy_fee_fixed` per order, with dbt variables `legacy_fee_rate: 0.029` and `legacy_fee_fixed: 0.30`. After the first full load the variables are reset to the observed ratio for matched legacy orders. Given the match rates in §4.5 the estimate is expected to apply to very few orders.
 
 For the legacy era the WooCommerce line `total` is already net of discounts, so `discount` is `subtotal − total` and there is no service fee.
 
@@ -229,7 +249,7 @@ Grain: `customer_hash`, excluding unresolved orders. Columns: `first_purchase_da
 | curve closes | the event-date row of `core.event_daily` has `cumulative_seats = core.event_economics.seats_sold` |
 | spend conserves | allocated + unallocated ad spend = total, per day |
 | era values | `platform_era` accepted values and not null on every core and mart table |
-| identity coverage | warn when resolved share of orders is below 90% for any year from 2022 |
+| identity coverage | warn when resolved share of orders is below 98% for any year from 2019 |
 | worked order | one real bronco order, chosen in ECON-001 and checked by hand against Stripe, reproduces its `processing_fee`, `net_distributable` and `sns_share` exactly (pinned by order key, amounts only, no personal data) |
 | worked event | one real event reproduces seats, realized revenue and sell-through dates checked by hand |
 | existing pinned facts | the two base-spec pinned tests keep passing |
@@ -240,14 +260,15 @@ Grain: `customer_hash`, excluding unresolved orders. Columns: `first_purchase_da
 - Capacity is final capacity. A venue change or capacity increase mid-sale is invisible.
 - Legacy partial refunds are known only where the Stripe refund matches the order.
 - Ad spend before the Google Ads transfer backfill window and before any Meta export is dropped has no data. Contribution is null there, not inflated.
-- Payments taken outside Stripe, if any exist, keep estimated fees and rely on the CMS import for identity. The first load measures how many.
+- Payments taken outside Stripe, if any exist, keep estimated fees and rely on the CMS import for identity. None appeared in the sampled weeks; the first full load measures the true number.
+- Charges from 2016 to 2018 hold the email only in metadata and the order id only in the description. Both are handled, but this period has the weakest identity coverage.
 - Identity is deterministic on email only. One person with two emails is two customers.
 
 ## 10. Success criteria
 
 1. For any event with an event date, one query over `mart.event_performance` and `core.event_daily` answers every question in §1.
-2. At least 95% of bronco bookings and 85% of legacy bookings from 2022 onward carry `fee_source = 'actual'`.
-3. At least 90% of orders from 2022 onward resolve to a customer hash, and customers who bought in both eras appear as one row in `core.customers`.
+2. At least 98% of card-paid bookings in both eras carry `fee_source = 'actual'`.
+3. At least 98% of orders from 2019 onward resolve to a customer hash, and customers who bought in both eras appear as one row in `core.customers`.
 4. No email address, name, phone number, street address or card detail exists in any dataset the pipeline writes. Verified by a scan of `raw_stripe` payloads for `@` after the first load.
 5. The worked order and worked event tests pass.
 
@@ -268,6 +289,7 @@ Base-plan tasks 1–9 (loaders, CLI, infra script) are implemented. This addendu
 | Era boundary | 2026-06-19 | last day the archive received data |
 | Legacy fees | actual from Stripe full history; estimate only when unmatched | same Stripe account throughout; estimates stay visible through `fee_source` |
 | Legacy identity | hash from Stripe first, CMS import second | the archive holds no email and 36% of legacy orders are guest checkouts |
+| Bronco Stripe join | `CheckoutSessionKey`, then `OrderNumber` | live charges carry no order GUID; these two exist on both sides |
 | PII in Stripe payloads | allowlist sanitiser in the loader | a blocklist fails open when Stripe adds a field |
 | Booking grain | ticket order item | matches the brief's customer × order × event grain and allocates cleanly |
 | Ad spend on events | pro rata by seats sold per metro-day, remainder reported unallocated | simple, conserves money, and is labelled as allocation rather than attribution |
