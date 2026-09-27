@@ -15,7 +15,8 @@ and order-matching rework). Operational docs: `docs/runbook.md`, `docs/looker-st
 ```
 sns-analytics/
   loaders/              Python package: one module per source + shared CLI
-    common/             bq.py (RawWriter), config.py (Settings), state.py (LoadState/run_step), slack.py
+    common/             bq.py (RawWriter), config.py (Settings), state.py (LoadState/run_step), slack.py,
+                        dbt_results.py (summarises dbt's run_results.json for the status message)
     cms.py               CMS export API loader (source `cms`) -- not deployable yet, see docs/handoff.md
     stripe_loader.py      Stripe API loader (source `stripe`) -- owned by the economic truth layer plan
     stripe_sanitize.py    strips personal data from Stripe payloads before they're stored
@@ -27,6 +28,7 @@ sns-analytics/
     models/marts/          mart_daily_kpis, mart_paid_performance, mart_orders_reconciliation
     tests/                 singular data tests (corrections, pinned facts, reconciliation)
     seeds/                 date_flags.csv, campaign_metro_map.csv
+    selectors.yml          the `hourly` selector used by the hourly job
   brief/                warehouse-backed data for the Slack morning brief (module + patch; see brief/README.md)
   infra/                setup.sh (idempotent GCP setup, run from Cloud Shell), bq_admin.py, create_raw_tables.py
   jobs/                 entrypoint.sh (loaders -> dbt build -> Slack status), used by the root Dockerfile
@@ -48,9 +50,10 @@ pytest -q
 export CMS_BASE_URL=https://www.sipandscript.com CMS_EXPORT_TOKEN=...
 python -m loaders run --sources cms
 
-# dbt, from dbt/, against the same BigQuery project via your own ADC
-cd dbt && export DBT_PROFILES_DIR=$(pwd)
-../.venv/bin/dbt build
+# dbt, from dbt/, against the same BigQuery project via your own ADC.
+# Set a schema prefix first: without it a local build writes the PRODUCTION staging/core/mart/ops tables.
+cd dbt && export DBT_PROFILES_DIR=$(pwd) DBT_SCHEMA_PREFIX=dev_<your name>
+../.venv/bin/dbt build          # writes dev_<name>_staging, dev_<name>_core, dev_<name>_mart, dev_<name>_ops
 ```
 
 See `docs/runbook.md` for the full loader/dbt command reference (per-source runs, `--full`, watermark
@@ -60,5 +63,7 @@ failures from `ops.run_log`). See
 and what's already live in BigQuery today versus what isn't. See `docs/looker-studio.md` for building
 the Looker Studio report against `mart.mart_daily_kpis` and `mart.mart_paid_performance`.
 
-Cloud Run job `sns-analytics` (us-east1) runs `jobs/entrypoint.sh` on the schedules `infra/setup.sh`
-creates (paused until a human resumes them per `docs/handoff.md`).
+Two Cloud Run jobs (us-east1) run `jobs/entrypoint.sh` from the same image: `sns-analytics-daily`
+(`MODE=daily`: CMS, Search Console and spend loaders, then the whole dbt project) and `sns-analytics-hourly`
+(`MODE=hourly`: CMS loader, then `dbt build --selector hourly`), on the schedules `infra/setup.sh` creates
+(paused until a human resumes them per `docs/handoff.md`).

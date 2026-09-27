@@ -1,13 +1,11 @@
 # Looker Studio — "Sip & Script — Website & Sales"
 
-Step-by-step creation of the report described in the original Task 16 brief and spec §1
-("Consumers... Looker Studio dashboards"). Column names below are copied verbatim from
-`dbt/models/marts/mart_daily_kpis.sql` and `dbt/models/marts/mart_paid_performance.sql` — check those
-files if a mart's columns ever change; this doc will drift otherwise.
+Step-by-step creation of the report described in spec §1 ("Consumers... Looker Studio dashboards"). Column
+names below are copied from `dbt/models/marts/mart_daily_kpis.sql` and
+`dbt/models/marts/mart_paid_performance.sql`; check those files if a mart's columns change.
 
-**Report URL:** _(paste here once created — not yet created as part of this task; report
-creation requires interactive Looker Studio UI access this session does not have. Everything below
-is the exact procedure to follow.)_
+**Report URL:** _(paste here once created — the report has not been created yet; creating it needs
+interactive Looker Studio access.)_
 
 ## 1. Data sources
 
@@ -15,103 +13,85 @@ Go to [Looker Studio](https://lookerstudio.google.com) → **Create** → **Data
 connector, twice:
 
 1. **`mart.mart_daily_kpis`**
-   - Project: `sipandscript`, dataset: `mart`, table: `mart_daily_kpis`.
-   - Under the data source's sharing settings: **"Viewer's credentials" OFF**, **"Owner's
-     credentials" ON** — viewers use your (the report owner's) BigQuery access, so they don't each
-     need their own `roles/bigquery.dataViewer` grant on `mart`/`core` (spec §9 already grants that to
-     your Google identity; viewers of the report don't need it individually).
-   - Columns as defined by the model: `business_date` (DATE), `pre_launch` (BOOLEAN),
-     `channel_group` (TEXT), `metro_key` (TEXT, nullable), `sessions` (NUMBER), `engaged_sessions`
-     (NUMBER), `orders` (NUMBER), `ticket_orders` (NUMBER), `seats` (NUMBER), `gross_revenue`
-     (NUMBER/currency), `net_revenue` (NUMBER/currency), `cvr` (NUMBER/percent, nullable), `aov`
-     (NUMBER/currency, nullable), `new_customers` (NUMBER), `unreliable_ga4` (BOOLEAN).
+   - Project `sipandscript`, dataset `mart`, table `mart_daily_kpis`.
+   - Sharing: **"Viewer's credentials" OFF**, **"Owner's credentials" ON**, so viewers use the report
+     owner's BigQuery access and need no grant of their own.
+   - Columns: `business_date` (DATE), `pre_launch` (BOOLEAN), `channel_group` (TEXT), `metro_key` (TEXT,
+     nullable), `sessions`, `engaged_sessions`, `orders`, `ticket_orders`, `seats` (NUMBER),
+     `gross_revenue`, `net_revenue`, `ticket_net_revenue` (NUMBER, currency), `channel_ticket_orders`
+     (NUMBER, NULL on metro rows), `cvr` (NUMBER, nullable), `aov` (NUMBER, currency, nullable),
+     `new_customers` (NUMBER), `unreliable_ga4` (BOOLEAN).
 2. **`mart.mart_paid_performance`**
-   - Project: `sipandscript`, dataset: `mart`, table: `mart_paid_performance`.
-   - Same sharing settings: viewer's credentials off, owner's credentials on.
-   - Columns: `date` (DATE), `platform` (TEXT: `google`/`meta`/`pinterest`), `campaign_id` (TEXT,
-     nullable — only populated for `google`), `campaign_name` (TEXT), `campaign_name_norm` (TEXT,
-     lower/trimmed — join key only, don't surface it), `metro_key` (TEXT, nullable), `spend`
-     (NUMBER/currency), `impressions` (NUMBER), `clicks` (NUMBER), `sessions` (NUMBER), `orders`
-     (NUMBER), `seats` (NUMBER), `net_revenue` (NUMBER/currency), `roas` (NUMBER, nullable), `cpa`
-     (NUMBER/currency, nullable).
+   - Project `sipandscript`, dataset `mart`, table `mart_paid_performance`; same sharing settings.
+   - Columns: `date` (DATE), `platform` (TEXT: `google`/`meta`/`pinterest`), `campaign_id` (TEXT, only for
+     `google`), `campaign_name` (TEXT), `campaign_name_norm` (TEXT, join key only — don't surface it),
+     `metro_key` (TEXT, nullable), `spend` (currency), `impressions`, `clicks`, `sessions`, `orders`,
+     `seats` (NUMBER), `net_revenue` (currency), `roas` (NUMBER, nullable), `cpa` (currency, nullable).
 
-Name the report **"Sip & Script — Website & Sales"** when creating it (Create → Report, add both data
-sources above).
+Name the report **"Sip & Script — Website & Sales"** (Create → Report, add both data sources).
 
-## 2. CVR — read this before adding the scorecard
+## 2. How `mart_daily_kpis` rows add up — read this first
 
-`mart_daily_kpis.cvr` is **already a per-row ratio** (`ticket_orders / sessions`, computed with
-`safe_divide` in the model, NULL when sessions are 0/absent or `metro_key` is not null or the day is
-flagged `unreliable_ga4`). Looker Studio's default aggregation for a NUMBER field is SUM (or whatever
-you pick), and **neither SUM nor AVERAGE of the row-level `cvr` values is correct** once you group by
-anything other than the exact grain the row already has — e.g. summing `cvr` across a date range adds
-percentages together, and averaging it weights every day/channel cell equally regardless of its
-session volume.
+One row per `business_date` × `pre_launch` × `channel_group` × `metro_key`.
 
-**Rule for this report: only ever display CVR on a chart/scorecard filtered to `metro_key IS NULL`,
-and always as a calculated field `SUM(ticket_orders) / SUM(sessions)`, never `SUM(cvr)` or
-`AVG(cvr)`.**
+- **Orders, ticket orders, seats, gross/net revenue, ticket net revenue and new customers** sit on exactly
+  one row each: the row of the order's metro (its event's metro, else its billing zip's metro), or the
+  `metro_key IS NULL` row when it has none. **Sum them over ALL rows.** Never filter a chart that shows
+  orders or revenue to `metro_key IS NULL`: once orders carry metros that silently drops them.
+- **Sessions and engaged sessions** sit only on `metro_key IS NULL` rows (GA4 has no metro). Summing them
+  over all rows gives the same answer as summing the null-metro rows.
+- **CVR** must use the per-channel total of ticket orders, not the null-metro row's own `ticket_orders`.
+  That total is `channel_ticket_orders`: the ticket orders of the date, `pre_launch` and channel summed
+  over **all** metro values, carried on the null-metro row and NULL on metro rows. So over any set of rows,
+  `SUM(channel_ticket_orders) / SUM(sessions)` is the CVR of the null-metro rows — the correct one — with
+  no filter needed.
 
-Create the calculated field once, on the `mart_daily_kpis` data source, name it `CVR (calc)`:
+Create these calculated fields once, on the `mart_daily_kpis` data source:
 
-```
-SUM(ticket_orders) / SUM(sessions)
-```
+| Field name | Formula | Format |
+|---|---|---|
+| `CVR (calc)` | `SUM(channel_ticket_orders) / SUM(sessions)` | percent |
+| `AOV (calc)` | `SUM(ticket_net_revenue) / SUM(ticket_orders)` | currency |
 
-Format it as a percent. Use `CVR (calc)`, not the raw `cvr` column, on every scorecard/chart in this
-report. Every chart that uses it must carry a filter `metro_key IS NULL` (metro-level rows in
-`mart_daily_kpis` are additional breakout rows for the *same* sessions/orders — including them would
-double-count sessions and orders in any aggregate).
+Never display `SUM(cvr)`, `AVG(cvr)` or `AVG(aov)`: the stored `cvr`/`aov` are per-row ratios and do not
+aggregate. `cvr` is also NULL on dates flagged `unreliable_ga4` (the 2026-06-19..22 GA4 cutover blackout);
+exclude those dates from CVR charts with a filter `unreliable_ga4 = false`, or show the flag next to them.
+CVR by metro is not defined (sessions carry no metro).
 
 ## 3. Page 1 — "Overview"
 
-Data source: `mart.mart_daily_kpis`.
+Data source: `mart.mart_daily_kpis`. **No page-level `metro_key` filter.**
 
-1. **Date range control** — top of the page, defaults to a reasonable window (e.g. last 90 days);
-   field `business_date`.
-2. **Four scorecards**, each with a filter `metro_key IS NULL` (add the filter per-chart, or add one
-   page-level filter if the whole page should only ever show the metro-null grain — recommended, since
-   every chart on this page uses the non-metro rows):
-   - **Sessions** — `SUM(sessions)`.
-   - **Ticket orders** — `SUM(ticket_orders)`.
-   - **Net revenue** — `SUM(net_revenue)`, currency format.
-   - **CVR** — the `CVR (calc)` field from §2, percent format.
-3. **Time series chart** — dimension `business_date`, metrics `sessions`, `ticket_orders`,
-   `net_revenue` (pick 2-3 to avoid a cluttered dual axis; sessions + ticket orders on one axis, net
-   revenue on a second axis works well). Filter `metro_key IS NULL`.
-4. **Table by `channel_group`** — dimension `channel_group`, metrics `sessions`, `orders`,
-   `ticket_orders`, `net_revenue`, and the `CVR (calc)` field. Filter `metro_key IS NULL` (channel
-   breakdowns in this mart are also only meaningful at the non-metro grain — metro rows don't carry
-   `channel_group` breakdowns the same way; check current data before assuming otherwise, but the
-   model's `grid` construction unions session rows, which never carry a metro, so metro-level rows in
-   practice only ever come from the `orders` side and will show as extra `channel_group` values with
-   `metro_key` set — the page-level filter above already excludes them).
+1. **Date range control** on `business_date` (e.g. last 90 days).
+2. **Scorecards:** Sessions `SUM(sessions)`; Ticket orders `SUM(ticket_orders)`; Net revenue
+   `SUM(net_revenue)` (currency); CVR `CVR (calc)` with a chart filter `unreliable_ga4 = false`; AOV
+   `AOV (calc)`.
+3. **Time series** — dimension `business_date`; metrics `sessions` and `ticket_orders` on one axis,
+   `net_revenue` on a second axis.
+4. **Table by `channel_group`** — metrics `sessions`, `orders`, `ticket_orders`, `net_revenue`,
+   `CVR (calc)`. All rows, no metro filter. `Unattributed` holds orders with no GA4 session (it has no
+   sessions, so its CVR is blank); `Other` holds sessions whose source/medium match no channel rule.
+5. Optional **table by `metro_key`** — metrics `orders`, `ticket_orders`, `seats`, `net_revenue` only
+   (no sessions, no CVR). The blank `metro_key` row is orders with no metro.
 
 ## 4. Page 2 — "Paid"
 
 Data source: `mart.mart_paid_performance`.
 
-1. **Table by `platform, campaign_name`** — dimensions `platform`, `campaign_name`; metrics `spend`,
-   `orders`, `roas`, `cpa` (both already computed ratios in the model — `roas = net_revenue / spend`,
-   `cpa = spend / orders`, both NULL rather than 0 when the denominator is 0/absent, which Looker
-   Studio will render as blank; that's correct, not a bug). Sort by `spend` descending. Add
-   `impressions` and `clicks` as optional extra columns if there's room.
-2. **Metro bar chart** — dimension `metro_key`, metrics `spend` and `orders` (dual bars or two
-   side-by-side charts). `metro_key` is only populated for Google campaigns matched via
-   `campaign_metro_map`/GA4 metro attribution today; expect many rows with `metro_key` null until
-   Meta/Pinterest campaign-to-metro mapping is added — that's expected, not a defect, given phase one's
-   scope (spec §12: multi-touch attribution is phase two).
-3. Optional: a page-level date control on `date`.
+1. **Table by `platform, campaign_name`** — metrics `spend`, `orders`, `roas`, `cpa` (per-row ratios,
+   NULL when the denominator is 0; show them per campaign-day row only, or add calculated fields
+   `SUM(net_revenue) / SUM(spend)` and `SUM(spend) / SUM(orders)` for totals). Sort by `spend` descending;
+   add `impressions` and `clicks` if there is room.
+2. **Metro bar chart** — dimension `metro_key`, metrics `spend` and `orders`. Many rows have no metro until
+   campaign-to-metro mapping (`campaign_metro_map` seed) covers every campaign; expected in phase one.
+3. Optional page-level date control on `date`.
 
-Note: while `google_ads_enabled` is `false` (see `docs/runbook.md`) and before the Meta/Pinterest CSV
-drop has real files, `mart_paid_performance` has zero rows and this page will be empty — that's
-expected, not a report-building error (see `docs/handoff.md` items 6 and 10).
+While `google_ads_enabled` is `false` and before the first Meta/Pinterest CSV drop, `mart_paid_performance`
+has zero rows and this page is empty (see `docs/handoff.md` items 6 and 10).
 
 ## 5. Share
 
-Share → add the team (email addresses omitted from this doc deliberately — add them directly in the
-Looker Studio UI, not in this repo). Since owner's credentials are on for both data sources, viewers
-need only be added as viewers/editors of the *report* — no separate BigQuery IAM grant required for
-them individually.
+Share → add the team in the Looker Studio UI (addresses deliberately not recorded here). With owner's
+credentials on both data sources, viewers need only access to the report.
 
 Paste the final report URL at the top of this file once created.

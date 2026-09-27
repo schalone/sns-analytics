@@ -32,7 +32,8 @@ Known approximations versus the GA4 version (documented here, not hidden in the 
   transaction-id dedup logic here.
 * **Sessions include phantom-referral sessions.** GA4's `accounts.google.com` phantom referral is excluded
   outright from the GA4 version's session/channel/landing counts. `core_sessions` instead *re-attributes*
-  those sessions to their inherited prior source at the model layer (see `core_sessions.sql`) rather than
+  phantom sessions (that sign-in, and the Stripe Checkout return from `checkout.stripe.com` / `*.stripe.com`)
+  to the inherited prior source, else Direct, at the model layer (see `core_sessions.sql`) rather than
   dropping them, so warehouse-sourced session totals and channel splits will not match the GA4 version
   exactly even once orders are flowing (see `brief/README.md`).
 * **`pre_launch` is never referenced.** A later plan renames that mart column to `platform_era`; every query

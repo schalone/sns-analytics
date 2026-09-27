@@ -63,10 +63,9 @@ sns-analytics/
 **Runtime**
 
 - Python 3.12, `google-cloud-bigquery`, `google-auth`, `stripe`, `requests`, `dbt-bigquery`. No orchestrator; the entrypoint is sequential and each step is idempotent.
-- Cloud Run job `sns-analytics`, us-east1, service account `sns-analytics@sipandscript.iam.gserviceaccount.com`, image built from `jobs/Dockerfile` via `gcloud run jobs deploy --source`.
-- Cloud Scheduler (us-east1):
-  - `sns-analytics-daily` — `0 11 * * *` UTC: all loaders, then `dbt build`. Runs after the GA4 daily table normally lands and before the 12:15 UTC brief.
-  - `sns-analytics-hourly` — `30 * * * *` UTC: CMS loader only, then `dbt build --select tag:hourly` (orders, tickets, daily_kpis).
+- Two Cloud Run jobs, us-east1, same image and service account `sns-analytics@sipandscript.iam.gserviceaccount.com`, image built from the root `Dockerfile` via `gcloud run jobs deploy --source`. Each job has its mode fixed in its own environment and `--max-retries 0`; schedulers call `…/jobs/<job>:run` with an empty body (no overrides), so a scheduler can never change the mode and a failed run is never retried into the next one (final-review I2/I3, 2026-09-27):
+  - `sns-analytics-daily` (`MODE=daily`, `SOURCES=cms,gsc,spend`; Stripe is added by the economic truth layer plan once its full-history load is complete) — scheduler `0 11 * * *` UTC: loaders, then `dbt build` of the whole project. Runs after the GA4 daily table normally lands and before the 12:15 UTC brief.
+  - `sns-analytics-hourly` (`MODE=hourly`) — scheduler `30 0-10,12-23 * * *` UTC (skips the daily build's hour; the daily build is a superset): CMS loader only, then `dbt build --selector hourly` — the `hourly`-tagged models (CMS-derived core tables, `core_orders`, `mart_daily_kpis`, `mart_orders_reconciliation`) with their ancestors and tests, never the GA4-backed session models, which build daily only.
 - Local runs use Application Default Credentials; the same CLI and `dbt build` work from a laptop against the same project.
 
 **Datasets** (all US multi-region, created by `infra/setup.sh`)
@@ -112,7 +111,18 @@ Restricted read-only API key (Secret Manager `stripe-restricted-key`). Entities:
 
 ### 5.3 Search Console (`loaders/gsc.py`)
 
-Search Analytics API (`searchanalytics/query`) for both properties, `https://sipandscript.com/` and `https://www.sipandscript.com/`, dimensions `date, page, query` and separately `date, page, device, country`; 25k-row paging; per-day incremental with a 3-day overlap because Search Console restates recent days. Backfill the API's full 16 months. The native Search Console bulk export is not used in phase one: a Cloud project can export only one property and the export has no history, whereas the API covers both properties with backfill.
+Search Analytics API (`searchanalytics/query`) for both properties, `https://sipandscript.com/` and `https://www.sipandscript.com/`; 25k-row paging; per-day incremental with a 3-day overlap because Search Console restates recent days, the watermark advancing after every loaded day. Backfill the API's full 16 months.
+
+Dimension sets (revised 2026-09-27, final-review I18). The API drops anonymised and low-volume rows whenever `page` is combined with another dimension and whenever `query` is requested: for 2026-09-10 (www) `[date]` gave 150 clicks, `[date, page]` 153, `[date, device, country]` 150, but `[date, page, query]` and `[date, page, device, country]` only 61. The original sets (`date, page, query` and `date, page, device, country`) therefore held 5,097 of the properties' 11,306 clicks for 2026-06-23..2026-09-13. The loaded sets are:
+
+| Set | Dimensions | Completeness | Use |
+|---|---|---|---|
+| `totals` | `date` | complete | every click / impression total |
+| `page` | `date, page` | complete per page | page performance |
+| `device_country` | `date, device, country` | complete | device and country split |
+| `page_query` | `date, page, query` | partial (non-anonymised queries only) | search-term analysis only; never summed |
+
+`date, page, device, country` is no longer loaded (its raw table keeps the 2026-09-27 backfill). The native Search Console bulk export is not used in phase one: a Cloud project can export only one property and the export has no history, whereas the API covers both properties with backfill.
 
 ### 5.4 Spend CSV drop (`loaders/spend_csv.py`) — stopgap for Meta and Pinterest
 
@@ -174,7 +184,10 @@ All money in dollars (`cents / 100`), converted once in staging. Dates in `Ameri
 | `core.sessions` | one GA4 session | session_key (user_pseudo_id + ga_session_id), user_pseudo_id, session_start_at, session_date, landing_page_path, landing_query_q, source, medium, campaign, default_channel_group, has_gclid, device_category, country, region, city, engaged, page_views, is_phantom_referral, pre_launch |
 | `core.session_orders` | one order ↔ one session | order_key, session_key, purchase_event_at; one row per order (earliest purchase event with that transaction_id) |
 | `core.ad_spend` | one campaign-day | date, platform (`google` \| `meta` \| `pinterest`), campaign_id, campaign_name, metro_key, spend, impressions, clicks |
-| `core.search_daily` | one property-page-query-day | date, property, page_path, query, clicks, impressions, position |
+| `core.search_daily` | one property-page-query-day | date, property, page_path, query, clicks, impressions, position. **Partial**: only non-anonymised queries (§5.3); for search terms only, never summed to a total |
+| `core.search_totals_daily` | one property-day | property, date, clicks, impressions, position; complete — the source of every Search Console total |
+| `core.search_page_daily` | one property-page-day | property, date, page, page_path, clicks, impressions, position; complete per page |
+| `core.search_device_country_daily` | one property-device-country-day | property, date, device, country, clicks, impressions, position; complete |
 | `core.stripe_transactions` | one balance transaction | txn_id, type, created_at, amount, fee, net, order_key (from metadata), refund_id, payout_id |
 
 **Unifying old and new orders.** Pre-launch rows come from `sipandscript_new_ds.orders` + `order_line_items` + `products` (WooCommerce statuses `completed`/`refunded`; `order_type` from the product: `tribe_wooticket_for_event` → ticket, gift card SKUs → gift_card, else materials). Post-launch rows come from `raw_cms`. CMS rows with `source = 'wordpressImport'` are excluded because the archive already holds them. Old events map to new ones through `wordpress_source_id`.
@@ -186,7 +199,8 @@ All money in dollars (`cents / 100`), converted once in staging. Dates in `Ameri
 | Correction | Model | Test |
 |---|---|---|
 | GA4 `purchase` double-fire on `/order-confirmation/` | `core.session_orders` keeps one row per transaction_id | unique(order_key) |
-| `accounts.google.com` phantom referral | `core.sessions.is_phantom_referral`; source/medium replaced by the user's previous non-phantom session within 30 minutes, else `direct` | no session with source = accounts.google.com |
+| Phantom referrals: `accounts.google.com` sign-in and the Stripe Checkout round trip (`checkout.stripe.com`, any `*.stripe.com`; added 2026-09-27, final-review I11 — Stripe self-referrals owned 205 purchases as Referral) | `core.sessions.is_phantom_referral` (never NULL), driven by dbt var `phantom_referral_sources` plus the `.stripe.com` suffix rule; source/medium/campaign replaced by the user's previous non-phantom session within 30 minutes, else `direct` | no session keeps a phantom source |
+| GA4 `(not set)` beats the fallback (added 2026-09-27, final-review I11: 63k sessions landed in Other) | `core.sessions`: `(not set)` (any case) and empty source/medium/campaign are NULL before any coalesce, so the chain is last click → event parameters → `(direct)` / `(none)` | accepted_values on default_channel_group |
 | Jun 19–22 tracking blackout | `core.sessions.pre_launch` and a `ops.date_flags` seed marking 2026-06-19..22 `unreliable_ga4`; marts exclude those days from CVR | accepted_values |
 | Tickets vs materials vs gift cards | `core.orders.order_type` | not_null, accepted_values |
 | Refunds net of gross | `core.orders.net_revenue = gross − refunded` | net ≤ gross, net ≥ 0 |
@@ -221,7 +235,7 @@ Definitions: `channel_group` is GA4's default channel grouping after the phantom
 ## 11. Testing
 
 - **Loaders:** pytest with recorded JSON fixtures per source; tests cover paging, watermark advance, overlap idempotence, and the raw table contract. No live API calls in tests.
-- **dbt:** schema tests (unique, not_null, relationships, accepted_values) on every core and mart table plus the correction tests in §7. Two data tests pin known facts from the September investigation so the model can't silently drift: post-launch orders Jun 23–Sep 17 within 1% of 5,328 and net ticket revenue within 1% of $474.1k.
+- **dbt:** schema tests (unique, not_null, relationships, accepted_values) on every core and mart table plus the correction tests in §7. Two data tests pin known facts from the September investigation so the model can't silently drift: post-launch orders Jun 23–Sep 17 within 1% of 5,328 and gross ticket revenue (amount charged) within 1% of $474.1k. Both are warn-severity until confirmed against the warehouse after the first CMS backfill, then raised to error.
 - **CMS export:** integration tests listed in §6.
 - **End to end:** `infra/setup.sh` is rerunnable; a `--dry-run` job execution against a throwaway dataset prefix (`DBT_TARGET_SCHEMA_PREFIX`) validates the container before schedules are enabled.
 

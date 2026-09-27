@@ -33,9 +33,15 @@ that repo's working directory.
 See `brief/warehouse.py`'s module docstring for exactly how each field is computed and every known
 approximation versus the GA4 version (in short: "users" is reported as sessions, "orders" means ticket orders,
 "revenue" means net revenue, and warehouse session totals will not exactly match GA4's once orders resume,
-because the warehouse re-attributes the `accounts.google.com` phantom referral rather than excluding it).
+because the warehouse re-attributes phantom referrals (the `accounts.google.com` sign-in and the Stripe Checkout
+return from `checkout.stripe.com`) rather than excluding them).
 
-One of those is worth calling out here too: `mart_daily_kpis.unreliable_ga4` flags the 2026-06-19..22 GA4
+Two definitions changed on 2026-09-27 (final-review I11 and minors): the channel lines include `Other`
+(sessions whose source/medium match no channel rule) and `Unattributed` (orders with no GA4 session), so they
+add up to the headline; and "Avg order" divides ticket orders' net revenue (`mart_daily_kpis.ticket_net_revenue`)
+by ticket orders, so numerator and denominator are the same population.
+
+One of those approximations is worth calling out here too: `mart_daily_kpis.unreliable_ga4` flags the 2026-06-19..22 GA4
 cutover blackout, and the mart itself reports that period's `cvr` as NULL. Any brief window (yesterday vs
 same weekday last week, or the 7-vs-7 comparison) that includes one of those dates shows `"CVR n/a"` instead
 of a computed percentage, and adds a `"⚠ window includes dates with unreliable GA4 tracking — sessions and

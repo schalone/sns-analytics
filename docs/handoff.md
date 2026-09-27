@@ -1,177 +1,167 @@
 # Handoff — what's left to take this pipeline live
 
-## What is ALREADY live in BigQuery today (2026-09-27)
+## What is ALREADY live in BigQuery (observed 2026-09-27)
 
-- **Read sources, real data, in use today:** `analytics_313669961` (GA4 raw export, full history to
-  the present) and `sipandscript_new_ds` (WooCommerce archive, 112,841 orders through 2026-06-19,
-  read-only, nothing new arriving).
-- **Datasets exist** (all US multi-region): `raw_cms`, `raw_spend` (empty, verified 2026-09-27);
-  `raw_gsc` now holds a completed 480-day backfill (both properties, both dimension sets — see
-  `docs/phase1-acceptance.md`); `raw_stripe.balance_transactions` holds real rows as of this writing
-  (the economic truth layer plan's Stripe load, a separate session — not run by this task); `google_ads`
-  (empty, transfer not authorised); `ops`, `staging`, `core`, `mart`.
-- **The whole dbt project builds green**: every staging view, core table and mart exists.
-  `core.core_search_daily` is now populated from the real Search Console backfill (820,947 rows). One
-  expected `warn`-severity test, `assert_webapp_orders_present` (see `docs/runbook.md`), because no
-  new-site orders exist yet. A second, `assert_reconciliation_variance_recent`, is currently also
-  firing because Stripe rows are landing without CMS orders to reconcile against yet (see item 9) —
-  expected while that plan's load is in progress, not a defect. A third,
-  the `core_tickets.event_key` relationships test, is also documented in the runbook as a permanent
-  soft check.
-- **`ops.load_state` / `ops.run_log` exist** and hold a history of loader/dbt invocations from this
-  plan's development, including this task's completed Search Console backfill (see
-  `docs/phase1-acceptance.md`).
-- **`brief/warehouse.py`** exists and is tested in this repo, but is **not wired into production** —
-  the CMS repo's `ga_report.py` still reads GA4 directly (`BRIEF_SOURCE` unset). See `brief/README.md`.
+- **Read sources, real data, in use:** `analytics_313669961` (GA4 raw export, full history to the present)
+  and `sipandscript_new_ds` (WooCommerce archive, 112,841 orders through 2026-06-19, read-only, nothing new
+  arriving).
+- **Datasets exist** (all US multi-region): `raw_cms`, `raw_spend` (empty on 2026-09-27); `raw_gsc`
+  (Search Console, both properties): `page_query` backfilled for 2025-06-04 to 2026-09-24, and the three
+  complete dimension sets `totals`, `page` and `device_country` backfilled for 2025-06-04 to 2026-09-25 (the www property has data from 2026-07-09) (see
+  `docs/phase1-acceptance.md`); `raw_gsc.page_device_country` keeps its 2025-06-04 to 2026-09-24 backfill
+  but is no longer loaded; `google_ads` (empty, transfer not authorised); `ops`, `staging`, `core`, `mart`.
+  On 2026-09-27 `raw_stripe.balance_transactions` was observed to hold rows (about 65,000 to 75,000
+  during that day). The Stripe history load is owned and run by the economic truth layer plan, requires the
+  owner's approval, and is a full-history load; this pipeline plan did not run it. Confirm with that plan
+  whether the load has completed before relying on Stripe-derived tables.
+- **The whole dbt project builds green** with three expected warnings, each explained in
+  `docs/runbook.md` ("Expected warnings"): `assert_webapp_orders_present` and `assert_raw_cms_orders_fresh`
+  (no CMS data yet) and `assert_reconciliation_variance_recent` (Stripe rows with no CMS orders to compare).
+- **`ops.load_state` / `ops.run_log` exist** and hold the history of this plan's development runs,
+  including the Search Console backfills.
+- **`brief/warehouse.py`** exists and is tested in this repo, but is **not wired into production** — the CMS
+  repo's `ga_report.py` still reads GA4 directly (`BRIEF_SOURCE` unset). See `brief/README.md`.
 
 ## What is NOT live yet
 
 - `infra/setup.sh` has not been run: no `sns-analytics@` service account, no IAM bindings from it, no
-  `sns-analytics-drop` bucket, no Secret Manager secret placeholders, no Cloud Run job, no schedulers.
-- The CMS export API (spec §6) is built and reviewed on a branch in the `sipandscript-sns.webapp.cms`
-  repo but not deployed anywhere — the CMS loader cannot run at all yet.
-- The Stripe load's order-matching is not delivered yet — see item 9.
+  `sns-analytics-drop` bucket, no Secret Manager placeholders, no Cloud Run jobs, no schedulers.
+- The CMS export API (spec §6) is built and reviewed on a branch in the `sipandscript-sns.webapp.cms` repo
+  but not deployed anywhere — the CMS loader cannot run at all yet.
+- Stripe order matching is not delivered yet — see item 9.
 - The Google Ads BigQuery Data Transfer has not been authorised.
 - Meta/Pinterest spend CSVs have never been dropped in the bucket (the bucket doesn't exist yet).
-- Both schedulers, the Looker Studio report, and the brief's `BRIEF_SOURCE=warehouse` switch are all
-  pending on the above.
+- The schedulers, the Looker Studio report, and the brief's `BRIEF_SOURCE=warehouse` switch all wait on the
+  above.
 
-## Raw writer payload bug — found and fixed 2026-09-27
+## Raw writer payload bug (fixed)
 
-`loaders/common/bq.py`'s `RawWriter.append()` double-JSON-encoded the `payload` column, which would
-have made every future loader's raw rows unusable (see `docs/runbook.md`). It was found during this
-Search Console backfill and fixed the same day in commit `1d4d1b4`, verified with a real BigQuery round
-trip and guarded going forward by `dbt/tests/staging/assert_raw_payloads_are_objects.sql`. No raw rows
-were ever loaded with the bug present. Nothing further to do here — noted for the record since it would
-otherwise have silently broken the CMS backfill (item 8) and the Stripe load (item 9).
+`loaders/common/bq.py`'s `RawWriter.append()` double-JSON-encoded the `payload` column, which made raw rows
+unreadable by staging (see `docs/runbook.md`). It was found by the first real load on 2026-09-27, fixed in
+commit `1d4d1b4`, with the follow-up `64683cc` (non-finite floats become JSON null), and is guarded by
+`dbt/tests/staging/assert_raw_payloads_are_objects.sql`. No raw rows with the bug were kept. Nothing further
+to do; noted because it would otherwise have broken the CMS backfill (item 8) and the Stripe load (item 9).
 
 ## Ordered checklist
 
 1. **Push the CMS export API branch and open its MR.**
    Who: CMS repo owner/developer. What: `git push origin feat/analytics-export-api` in the
-   `sipandscript-sns.webapp.cms` checkout, then open a merge request against that repo's default
-   branch. Verify: MR exists and CI runs on it. Unblocks: code review and eventual merge/deploy.
+   `sipandscript-sns.webapp.cms` checkout, then open a merge request against that repo's default branch.
+   Verify: MR exists and CI runs on it. Unblocks: code review and eventual merge/deploy.
 
 2. **Deploy to dev1; set the export API key; run the smoke checks.**
-   Who: CMS repo owner, with deploy access to dev1. What: after merge, deploy to the dev1 environment;
-   set `Analytics__ExportApiKey` in Doppler to at least 32 random bytes
-   (e.g. `openssl rand -hex 32`); run `scripts/analytics-export-smoke.sh` (in the CMS repo) against
-   dev1; then, against the dev server, manually check: (a) a keyset walk with a small `pageSize`
-   (e.g. 25) returns the same total row count as `SELECT COUNT(*)` on the underlying table; (b) a
-   `nextCursor` obtained before an app restart is still valid and resumes correctly after the app
-   restarts; (c) event `startAtUtc`/`endAtUtc` match the public site's displayed times for a sample of
-   events, including at least one non-Eastern-timezone venue; (d) `venues.latitude`/`longitude` are
-   present (non-null) on a sample of venues; (e) a request with no/garbage token returns 401, and a
-   request when the config key is unset returns 404. Verify: all five checks pass; smoke script exits
-   0. Unblocks: confidence the export contract (spec §6) matches the real deployment before touching
-   production.
+   Who: CMS repo owner, with deploy access to dev1. What: after merge, deploy to dev1; set
+   `Analytics__ExportApiKey` in Doppler to at least 32 random bytes (e.g. `openssl rand -hex 32`); run
+   `scripts/analytics-export-smoke.sh` (in the CMS repo) against dev1; then manually check: (a) a keyset
+   walk with a small `pageSize` (e.g. 25) returns the same total row count as `SELECT COUNT(*)` on the
+   underlying table; (b) a `nextCursor` obtained before an app restart still resumes correctly after it;
+   (c) event `startAtUtc`/`endAtUtc` match the public site's displayed times for a sample of events,
+   including a non-Eastern venue; (d) `venues.latitude`/`longitude` are present on a sample of venues;
+   (e) no/garbage token returns 401, and an unset config key returns 404. Verify: all five pass; smoke
+   script exits 0. Unblocks: confidence the export contract (spec §6) matches the real deployment.
 
 3. **Production deploy of the CMS change.**
-   Who: CMS repo owner. What: standard production deploy process for that repo, once dev1 checks pass
-   and the MR is approved/merged. Verify: `GET /api/export/events?pageSize=1` against production with a
-   valid token returns a 200 with a well-formed envelope (`entity`, `generatedAt`, `items`,
-   `nextCursor`). Unblocks: the CMS loader can now run against a real, production export.
+   Who: CMS repo owner. What: the repo's standard production deploy once dev1 checks pass and the MR is
+   merged. Verify: `GET /api/export/events?pageSize=1` against production with a valid token returns 200
+   with a well-formed envelope (`entity`, `generatedAt`, `items`, `nextCursor`). Unblocks: the CMS loader.
 
 4. **Run `infra/setup.sh` in Cloud Shell.**
-   Who: a human with `gcloud`/`bq` access and IAM admin on `sipandscript` (the dev laptop's `gcloud`
-   and `bq` are broken; this must run from Cloud Shell). What: `bash infra/setup.sh`. It is idempotent
-   — safe to re-run. Verify: script exits 0; it prints manual follow-ups (secrets, Ads transfer
-   authorisation, Search Console SA grant, first-run scheduler resume) — those are items 5-7 and 11
-   below, not automatic. Unblocks: the `sns-analytics@sipandscript.iam.gserviceaccount.com` service
-   account, its IAM bindings, the `sns-analytics-drop` bucket, the Cloud Run job `sns-analytics`, and
-   both schedulers (created paused) all now exist.
+   Who: a human with `gcloud`/`bq` access and IAM admin on `sipandscript` (the dev laptop's `gcloud` and
+   `bq` are broken). What: `bash infra/setup.sh` (idempotent, safe to re-run). It creates the service
+   account and its IAM bindings (Secret Manager access is granted per secret on `stripe-restricted-key`,
+   `cms-export-token` and `slack-ads-sync-bot-token`, never project-wide), the bucket, the two secret
+   placeholders, the Google Ads transfer, **two Cloud Run jobs** — `sns-analytics-daily` (`MODE=daily`,
+   `SOURCES=cms,gsc,spend`) and `sns-analytics-hourly` (`MODE=hourly`), same image, `--max-retries 0` — and
+   two schedulers created PAUSED (daily `0 11 * * *`, hourly `30 0-10,12-23 * * *` UTC, empty request body).
+   If an older version of the script ever created a single job named `sns-analytics`, delete it
+   (`gcloud run jobs delete sns-analytics --region us-east1`). Verify: the script exits 0 and both jobs are
+   listed by `gcloud run jobs list --region us-east1`. Unblocks: items 5-7 and 11.
 
-5. **Set the two secrets.**
-   Who: same human as item 4, Cloud Shell. What:
-   `printf '%s' "$STRIPE_KEY" | gcloud secrets versions add stripe-restricted-key --data-file=-` and
-   the same for `cms-export-token` (value = the `Analytics__ExportApiKey` set in item 2/3's Doppler
-   config). Verify: `gcloud secrets versions list stripe-restricted-key` (and `cms-export-token`) shows
-   an `ENABLED` version. Unblocks: the Cloud Run job (and any local run exporting these as env vars) can
-   authenticate to Stripe and the CMS export API.
+5. **Give every secret an enabled version.**
+   Who: same human, Cloud Shell. What:
+   `printf '%s' "$STRIPE_KEY" | gcloud secrets versions add stripe-restricted-key --data-file=-` and the same
+   for `cms-export-token` (value = the `Analytics__ExportApiKey` from item 2/3). `slack-ads-sync-bot-token`
+   already exists (the ads-sync bot's). **A secret with no enabled version prevents both jobs from
+   starting at all**, so all three must have one before item 11, even if the Stripe key is not used yet.
+   Verify: `gcloud secrets versions list <name>` shows an `ENABLED` version for all three. Unblocks: item 11.
 
 6. **Authorise the Google Ads transfer and backfill; then flip `google_ads_enabled`.**
    Who: a human with read access to Google Ads customer `1863952460`. What: BigQuery console → Data
-   transfers → `sns-google-ads` (created by `infra/setup.sh`) → authorise with that user's credentials
-   → trigger a 90-day backfill. Once `google_ads.campaign_stats`/`campaign`/`click_stats` have rows,
-   edit `dbt/dbt_project.yml`'s `vars.google_ads_enabled` to `true` and run `dbt build`. Verify:
-   `select count(*) from google_ads.campaign_stats` (or whatever the transfer names it) is non-zero
-   before flipping the var; after flipping, `dbt build` compiles (no "table not found" errors) and
-   `mart.mart_paid_performance` shows `platform = 'google'` rows. Unblocks: Google Ads spend/ROAS in
-   `mart_paid_performance`; success criterion 4 (spec §11).
+   transfers → `sns-google-ads` → authorise → trigger a 90-day backfill. Before flipping the var, compare the
+   column names the models use with `google_ads.INFORMATION_SCHEMA.COLUMNS` and check both var states
+   compile (`docs/runbook.md`, "dbt vars"). Then set `vars.google_ads_enabled: true` in
+   `dbt/dbt_project.yml` and run `dbt build`. Verify: `assert_google_spend_matches_source` passes and
+   `mart.mart_paid_performance` shows `platform = 'google'` rows. Unblocks: spec §11 criterion 4.
 
 7. **Add the pipeline service account to both Search Console properties.**
-   Who: a Search Console owner on `https://sipandscript.com/` and `https://www.sipandscript.com/`.
-   What: Search Console → Settings → Users and permissions → Add user →
-   `sns-analytics@sipandscript.iam.gserviceaccount.com` → Restricted (read-only is sufficient for the
-   `webmasters.readonly` scope the loader uses). Verify: the SA appears in both properties' user lists.
-   **Status: the 480-day Search Console backfill is done** (this task, 2026-09-27, using the human
-   operator's own ADC, which already had access — see `docs/phase1-acceptance.md` for row counts,
-   date range and measurements). This item is still needed, unchanged, before the **Cloud Run job's
-   service account** can run the GSC loader unattended on schedule — the job runs as that SA, not as
-   the operator's own credentials. Unblocks: scheduled (non-manual) Search Console loads once the job
-   exists (item 4) and schedulers are resumed (item 11).
+   Who: a Search Console owner on `https://sipandscript.com/` and `https://www.sipandscript.com/`. What:
+   Settings → Users and permissions → Add user → `sns-analytics@sipandscript.iam.gserviceaccount.com` →
+   Restricted. The historical backfills are done (run with the operator's own credentials on 2026-09-27:
+   `page_query` 2025-06-04 to 2026-09-24; `totals`, `page`, `device_country` 2025-06-04 to 2026-09-25); this grant is
+   needed for the job's own daily loads. Verify: the SA appears in both properties' user lists.
 
 8. **First CMS backfill.**
-   Who: whoever ran items 1-3. What:
-   `python -m loaders run --sources cms --full` then `cd dbt && dbt build`. Verify: `assert_
-   webapp_orders_present` no longer appears as a warning; the two pinned-fact tests
-   (`assert_post_launch_orders_pinned`, `assert_post_launch_ticket_revenue_pinned`) become meaningful —
-   expect roughly 5,328 orders (±1%, i.e. 5,275-5,381) and $474.1k net ticket revenue (±1%, i.e.
-   $469,359-$478,841) for `business_date between '2026-06-23' and '2026-09-17'`. Unblocks: real
-   new-site orders throughout `core`/`mart`; the Slack brief's warehouse path becomes meaningful
-   (`brief/README.md`'s "Before switching" precondition 1).
+   Who: whoever ran items 1-3. What: `python -m loaders run --sources cms --full`, then
+   `cd dbt && dbt build`. Verify: `assert_webapp_orders_present` and `assert_raw_cms_orders_fresh` no
+   longer warn; check the two pinned-fact tests, which are warn-severity until confirmed: roughly 5,328
+   orders (±1%, 5,275-5,381) and **$474.1k gross ticket revenue (amount charged)** (±1%,
+   $469,359-$478,841) for `business_date between '2026-06-23' and '2026-09-17'`. Once both match, raise
+   them to error by deleting the `config(severity='warn')` line in
+   `dbt/tests/core/assert_post_launch_orders_pinned.sql` and
+   `dbt/tests/core/assert_post_launch_ticket_revenue_pinned.sql`. The accepted_values tests on CMS order,
+   ticket and refund statuses and order source are error-severity: a value the CMS code does not produce
+   today stops the build (add it to `dbt/models/staging/schema.yml` and to the literals in
+   `core_orders.sql` / `core_events.sql` if it should count). Unblocks: real new-site orders throughout
+   `core`/`mart`; the brief's precondition 1.
 
 9. **The Stripe load.**
-   Owned by the **economic truth layer plan** (a separate, already-in-progress plan/session), not this
-   task; it requires the repository owner's explicit approval before it runs. As of the last check in
-   this task (2026-09-27, during the Search Console backfill above), `raw_stripe.balance_transactions`
-   held 65,000 rows — that plan's load appears to be in progress or done; this task did not run it and
-   did not check again after that point, so check `select count(*) from raw_stripe.balance_transactions`
-   for the current state before assuming either way. It is a full-history load (from 2026-06-19) of
-   several hundred thousand Stripe objects, expected to take roughly 20-40 minutes once approved. The
-   sanitiser that strips personal data from Stripe payloads before they're stored is already merged
-   (commit `4d21fe5`). **Order matching for Stripe rows
-   (joining a Stripe transaction to a `core.orders` row) is delivered by that same plan, not by this
-   one** — until it lands, `core_stripe_transactions.order_key` is NULL on every row, so
-   `mart.orders_reconciliation` can only compare day-level totals (CMS-side orders/revenue vs.
-   Stripe-side charges/net/fees for the same day), not per-order variance. Verify (once that plan
-   reports it done): `select count(*) from raw_stripe.balance_transactions` is non-zero;
-   `mart.orders_reconciliation` has rows with `variance_pct` populated for recent days. Unblocks:
-   success criterion 1 and 2 (spec §11); the brief's precondition 2 in `brief/README.md`.
+   Owned by the **economic truth layer plan**, not this one; it requires the repository owner's explicit
+   approval. On 2026-09-27 `raw_stripe.balance_transactions` was observed to hold rows (about 65,000 to
+   75,000 during that day). The Stripe history load is owned and run by the economic truth layer plan,
+   requires the owner's approval, and is a full-history load; this pipeline plan did not run it. Confirm
+   with that plan whether the load has completed before relying on Stripe-derived tables. A full Stripe
+   load pages the **whole account history**, not only since 2026-06-19. The sanitiser that strips personal
+   data from Stripe payloads is merged (commit `4d21fe5`). **Order matching for Stripe rows is delivered by
+   that plan**; until it lands, `core_stripe_transactions.order_key` is NULL on every row and
+   `mart.mart_orders_reconciliation` compares day totals only. **The daily job does not load Stripe**
+   (`SOURCES=cms,gsc,spend`), so it can never start the history load by accident; once that plan's history
+   load is complete, it adds Stripe to the daily job:
+   `gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'`.
+   Verify (once that plan reports done): `mart.mart_orders_reconciliation` has recent rows with
+   `variance_pct` populated. Unblocks: spec §11 criteria 1 and 2; the brief's precondition 2.
 
 10. **Drop Meta and Pinterest spend CSVs in the bucket.**
-    Who: whoever manages the Ads Manager exports. What: export the standard daily-by-campaign CSV from
-    each platform's Ads Manager and upload to `gs://sns-analytics-drop/spend/meta/*.csv` and
-    `gs://sns-analytics-drop/spend/pinterest/*.csv` (bucket created by item 4). Required columns after
-    header normalisation: `date, campaign_name, spend, impressions, clicks` (see
-    `loaders/spend_csv.py`'s `HEADER_MAP` for accepted header spellings). Verify:
-    `python -m loaders run --sources spend` reports non-zero rows for `spend.meta`/`spend.pinterest` in
-    `ops.run_log`. Unblocks: Meta/Pinterest rows in `core.core_ad_spend` and `mart.mart_paid_performance`.
+    Who: whoever manages the Ads Manager exports. What: export the standard daily-by-campaign CSV and upload
+    to `gs://sns-analytics-drop/spend/meta/*.csv` and `gs://sns-analytics-drop/spend/pinterest/*.csv`.
+    Required columns after header normalisation: `date, campaign_name, spend, impressions, clicks` (see
+    `HEADER_MAP` in `loaders/spend_csv.py`). Dates may be `YYYY-MM-DD`, `M/D/YYYY`, `MM/DD/YYYY` or
+    `YYYY/MM/DD`; numbers must use US format (a decimal comma or an accounting negative such as `(12.00)`
+    rejects the whole file); summary rows with no campaign name are skipped. Verify:
+    `python -m loaders run --sources spend` shows `spend.list.meta` / `spend.list.pinterest` ok and non-zero
+    rows for each file in `ops.run_log`. Unblocks: Meta/Pinterest rows in `core_ad_spend` and
+    `mart_paid_performance`.
 
-11. **One manual job execution, then resume both schedulers.**
-    Who: the human from item 4, Cloud Shell, after items 5-10 are in whatever state they'll be in for
-    go-live (not all need to be complete — the job tolerates partial source failure). What:
-    `gcloud run jobs execute sns-analytics --region us-east1 --wait`; confirm exit 0 and the Slack line
-    `sns-analytics daily OK — loaders rc=0, dbt rc=0` (or investigate `PROBLEMS` via `ops.run_log`
-    first). Then: `gcloud scheduler jobs resume sns-analytics-daily --location us-east1 && gcloud
-    scheduler jobs resume sns-analytics-hourly --location us-east1`. Verify: watch two hourly runs and
-    one daily run land in `ops.run_log` with `status = 'ok'`. Unblocks: the pipeline runs unattended.
+11. **One manual execution of each job, then resume both schedulers.**
+    Who: the human from item 4, Cloud Shell, after item 5 (the other items can be in any state — the jobs
+    tolerate a failing source). What: `gcloud run jobs execute sns-analytics-daily --region us-east1 --wait`
+    and confirm exit 0 and the Slack line `sns-analytics daily OK — …` followed by `dbt N models, M tests`
+    (investigate `PROBLEMS` via `ops.run_log` first); then
+    `gcloud run jobs execute sns-analytics-hourly --region us-east1 --wait` (an OK hourly run prints and
+    does not post to Slack). Then `gcloud scheduler jobs resume sns-analytics-daily --location us-east1 &&
+    gcloud scheduler jobs resume sns-analytics-hourly --location us-east1`. Verify: hourly and daily runs
+    land in `ops.run_log` (steps `dbt.hourly` / `dbt.daily` with `status = 'ok'`). Unblocks: unattended
+    operation.
 
 12. **Create the Looker Studio report.**
-    Who: anyone with BigQuery Data Viewer on `mart`/`core` (spec §9 — the user's own Google identity).
-    What: follow `docs/looker-studio.md` step by step. Verify: both data sources connect, page 1 and
-    page 2 render with real numbers once items 8/9 have landed real data (before that, expect mostly
-    zeros/blanks on the Paid page — not a report bug). Unblocks: a shareable dashboard for the team.
+    Who: anyone with BigQuery Data Viewer on `mart`/`core`. What: follow `docs/looker-studio.md`. Verify:
+    both data sources connect and both pages render (the Paid page stays empty until items 6/10 land).
 
 13. **Apply the brief patch.**
-    Who: whoever owns deploys of the `sipandscript-sns.webapp.cms` repo's `scripts/google-ads/`
-    Cloud Run job. What: first work through `brief/README.md`'s "Before switching `BRIEF_SOURCE` to
-    `warehouse` in production" checklist (new-site orders flowing — item 8 above; a real day's
-    orders/revenue compared warehouse-vs-Stripe-dashboard — item 9 above; daily job finishing before
-    the brief's schedule) — only once all three hold, apply
-    `patch -p0 < /path/to/sns-analytics/brief/ga_report_wiring.patch` from that repo's
-    `scripts/google-ads/` directory, vendor `brief/warehouse.py` (+ `brief/__init__.py`) into
-    `scripts/google-ads/brief/`, and set `BRIEF_SOURCE=warehouse` on that Cloud Run job's deploy
-    command. Verify: the morning brief in `#analytics` shows orders/revenue that match the Stripe
-    dashboard for a real recent day. Unblocks: the Slack brief runs off this warehouse instead of the
-    GA4 Data API directly.
+    Who: whoever deploys the `sipandscript-sns.webapp.cms` repo's `scripts/google-ads/` Cloud Run job. What:
+    first satisfy `brief/README.md`'s "Before switching `BRIEF_SOURCE` to `warehouse`" checklist (new-site
+    orders flowing — item 8; a real day's orders/revenue compared with the Stripe dashboard — item 9; the
+    daily job finishing before the brief's schedule); then apply
+    `patch -p0 < /path/to/sns-analytics/brief/ga_report_wiring.patch` from that repo's `scripts/google-ads/`
+    directory, vendor `brief/warehouse.py` (+ `brief/__init__.py`) into `scripts/google-ads/brief/`, and set
+    `BRIEF_SOURCE=warehouse` on that job. Verify: the morning brief's orders/revenue match the Stripe
+    dashboard for a real recent day.
