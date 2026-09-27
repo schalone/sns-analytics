@@ -55,7 +55,7 @@ cd dbt && export DBT_PROFILES_DIR=$(pwd)
 
 See `docs/runbook.md` for the full loader/dbt command reference (per-source runs, `--full`, watermark
 resets, rebuilding a model and its descendants, `--full-refresh` cost, secret rotation, reading
-failures from `ops.run_log`, and a known open issue in the raw-payload write path). See
+failures from `ops.run_log`). See
 `docs/handoff.md` for the ordered list of what a human still needs to do to take this pipeline live,
 and what's already live in BigQuery today versus what isn't. See `docs/looker-studio.md` for building
 the Looker Studio report against `mart.mart_daily_kpis` and `mart.mart_paid_performance`.

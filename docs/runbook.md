@@ -4,48 +4,21 @@ Operational reference for the sns-analytics loaders and dbt project. For the des
 `docs/superpowers/specs/2026-09-26-analytics-pipeline-design.md`. For what a human still has to do
 before this pipeline is live, see `docs/handoff.md`.
 
-## Known issue: raw `payload` is double-encoded (found 2026-09-27, unfixed)
+## Raw writer payload fix (2026-09-27)
 
-**Every loader** writes raw rows through `RawWriter.append()` in `loaders/common/bq.py`. That method
-builds each row as `{"key": ..., "updated_at": ..., "payload": json.dumps(r.payload, default=str), ...}`
-and hands it to `client.load_table_from_json(...)` against a table whose `payload` column is declared
-`JSON`. Because the value under `"payload"` is already a JSON-encoded **string** (not a dict/object),
-BigQuery's loader stores it as a JSON scalar string, not a JSON object — confirmed with
-`json_type(payload)` returning `'string'`, not `'object'`, and every `json_value(payload, '$.field')`
-call in every staging model (`stg_cms__*`, `stg_stripe__*`, `stg_gsc__page_query`, `stg_spend__csv`)
-returning `NULL` for every field on every row loaded this way.
-
-This was invisible until 2026-09-27 because no loader had ever written a real row into any raw table
-before then (`raw_cms`, `raw_stripe`, `raw_gsc`, `raw_spend` were all empty). It was found during this
-task's Search Console short-validation load: a 4,107-row `stg_gsc__page_query` → `core_search_daily`
-rebuild produced a table where `property`, `date`, `page`, `query`, `clicks`, `impressions` and
-`position` were `NULL` on all 4,107 rows, which then failed
-`dbt_utils_unique_combination_of_columns_core_search_daily_property__date__page__query` (all rows
-collapsed onto the same all-NULL key). Isolated reproduction (outside this project, against a throwaway
-table): loading a plain dict as the JSON-column value yields `json_type = 'object'`;
-loading `json.dumps(dict)` as the same column's value yields `json_type = 'string'`. This is what
-`RawWriter.append()` does today.
-
-**Effect:** every raw table's `payload` column is unusable by `json_value(...)` for any row loaded
-through the current `append()`, regardless of source (CMS, Stripe, Search Console, spend CSV). Any
-future backfill (CMS, Stripe, or the Search Console full backfill this task was going to run) will load
-real-looking row counts into `raw_*`, but every staging view built on top will extract all-NULL
-business columns, and every downstream uniqueness test on those columns will fail (many rows collapse
-onto one all-NULL key).
-
-**Not fixed here.** This task's controller rulings forbid touching anything under `loaders/`. The
-Search Console short-validation load and its downstream `core_search_daily` rebuild were rolled back
-(raw rows for that load's `_run_id` deleted, the four `ops.load_state` rows it seeded deleted,
-`core_search_daily` rebuilt back to 0 rows) so the repository is left in the same green state it was in
-before this task touched Search Console. The full 480-day backfill was not run — see
-`docs/phase1-acceptance.md`'s dated section for the reasoning.
-
-**Likely one-line fix** (for whoever owns `loaders/`): in `RawWriter.append()`, stop pre-serialising
-`r.payload` before handing it to `load_table_from_json` — pass a plain dict (its values already run
-through something equivalent to `json.loads(json.dumps(r.payload, default=str))` if there are
-non-JSON-native values like `datetime`s in it) so the JSON column receives an object, not a string. Any
-fix must be re-verified against a real row (`json_type(payload) = 'object'` and `json_value(payload,
-'$.<field>')` returning the expected value) before any backfill is re-attempted.
+The first real load into any raw table (this pipeline's Search Console short-validation load, on
+2026-09-27) surfaced a bug in `RawWriter.append()` (`loaders/common/bq.py`): it double-JSON-encoded the
+`payload` column, so BigQuery stored it as a JSON scalar **string** rather than a JSON **object**, and
+every `json_value(payload, '$.field')` read in every staging model returned `NULL`. It was fixed the
+same day in commit `1d4d1b4` (`fix(loaders): store raw payloads as JSON objects, not strings`), which
+round-trips the payload through `json.loads(json.dumps(payload, default=str))` before handing it to
+BigQuery, verified with a real BigQuery round trip (`json_type(payload) = 'object'`, fields readable via
+`json_value`) and a dbt regression guard
+(`dbt/tests/staging/assert_raw_payloads_are_objects.sql`, checks the last 3 days of every raw table).
+No raw rows were ever loaded with the bug present — `raw_cms`, `raw_stripe`, `raw_gsc` and `raw_spend`
+were all confirmed empty immediately before the fix, and the one short-validation load written with the
+bug was rolled back before the fix landed. See `docs/phase1-acceptance.md`'s 2026-09-27 section for the
+full timeline and the Search Console backfill this fix unblocked.
 
 ## Running a loader locally
 

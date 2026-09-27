@@ -90,37 +90,135 @@ rows, `gsc.page_device_country.www` 2,553 rows (6,775 rows total, window governe
 3-day overlap plus 2-day final lag, so roughly 2026-09-16..2026-09-25). No duplicate `key` values were
 found within the load.
 
-**Blocking discovery: `RawWriter.append()` (`loaders/common/bq.py`) double-encodes the `payload`
+**Blocking discovery: `RawWriter.append()` (`loaders/common/bq.py`) double-encoded the `payload`
 column, making it unusable.** Rebuilding `dbt build --select stg_gsc__page_query+` on the short-loaded
 data produced `core.core_search_daily` with `property`, `date`, `page`, `query`, `clicks`,
-`impressions` and `position` all `NULL` on all 4,107 rows (confirmed by direct query:
-`countif(property is null) = 4107`, `countif(date is null) = 4107`, `sum(clicks)` = `NULL`), which
-failed `dbt_utils_unique_combination_of_columns` on `core_search_daily` (all rows collapsed onto one
-all-NULL key — `Got 1 result, configured to fail if != 0`). Root cause, confirmed by an isolated probe
-against a throwaway table: `append()` calls `json.dumps(r.payload, default=str)` before assigning the
-result to the row's `payload` field, and BigQuery's `load_table_from_json` against a JSON-typed column
-stores a pre-stringified value as a JSON **string** scalar (`json_type(payload) = 'string'`), not a JSON
-**object** — every `json_value(payload, '$.field')` call in every staging model then returns `NULL`.
-This affects every loader (`cms`, `stripe`, `gsc`, `spend`), not only Search Console, and was invisible
-before this task because no loader had ever written a real row into any raw table. Full details, the
-reproduction, and the likely one-line fix are in `docs/runbook.md`'s "Known issue" section.
+`impressions` and `position` all `NULL` on all 4,107 rows, which failed
+`dbt_utils_unique_combination_of_columns` on `core_search_daily` (all rows collapsed onto one all-NULL
+key). Root cause, confirmed by an isolated probe against a throwaway table: `append()` called
+`json.dumps(r.payload, default=str)` before assigning the result to the row's `payload` field, and
+BigQuery's `load_table_from_json` against a JSON-typed column stored a pre-stringified value as a JSON
+**string** scalar, not a JSON **object** — every `json_value(payload, '$.field')` call in every staging
+model then returned `NULL`. This affected every loader (`cms`, `stripe`, `gsc`, `spend`), not only
+Search Console, and was invisible before this task because no loader had ever written a real row into
+any raw table.
 
-**Decision: the 480-day full backfill was not run.** Under this task's controller rulings,
-`loaders/` is off-limits (the bug cannot be fixed here), and running the full backfill anyway would
-have written on the order of a few million further broken rows for no analytic benefit — every
-downstream measurement would have been `NULL`, and the whole-project `dbt build` would have failed on
-the `core_search_daily` uniqueness test rather than showing the expected single warning. Per this
-task's own escalation rule ("STOP and report BLOCKED... if the Search Console load starts producing
-errors you cannot explain"), the short-load rows (`_run_id = 'local-20260927T150725Z'`) were deleted
-from `raw_gsc.page_query` and `raw_gsc.page_device_country`, the four seeded `ops.load_state` rows for
-`source = 'gsc'` were deleted, and `core.core_search_daily` was rebuilt back to its prior empty (0-row)
-state so the repository is left exactly as it was before this task touched Search Console. The
-whole-project `dbt build` afterward is green (`PASS=157 WARN=1 ERROR=0`, the one expected
-`assert_webapp_orders_present` warning).
+**Decision at the time: the 480-day full backfill was not run in this first pass.** Under this task's
+original controller rulings, `loaders/` was off-limits, and running the full backfill anyway would have
+written a few million further broken rows for no analytic benefit. The short-load rows
+(`_run_id = 'local-20260927T150725Z'`) were deleted from `raw_gsc.page_query` and
+`raw_gsc.page_device_country`, the four seeded `ops.load_state` rows for `source = 'gsc'` were deleted,
+and `core.core_search_daily` was rebuilt back to its prior empty (0-row) state so the repository was
+left exactly as it was before Search Console was touched. The whole-project `dbt build` afterward was
+green (`PASS=157 WARN=1 ERROR=0`, the one expected `assert_webapp_orders_present` warning).
 
-**Not measurable as a result:** rows per raw table beyond the short-load counts above (both now 0
-again by design), the date range of a full backfill, `core.core_search_daily` row count, total
-clicks/impressions per property for the last 12 full weeks, the top 10 www queries by clicks in the
-last 28 days, and the sanity check against the September investigation's ~11,472-click figure for
-2026-06-23..2026-09-13. All of these require a real backfill, which requires the payload bug fixed
-first (see `docs/runbook.md`, `docs/handoff.md`).
+The bug was fixed the same day — see the next section for the fix and the completed backfill.
+
+## 2026-09-27 — Raw writer fix and completed Search Console backfill (Task 16b)
+
+**Fix.** `RawWriter.append()` (`loaders/common/bq.py`) now round-trips the payload through
+`json.loads(json.dumps(payload, default=str))` before handing it to BigQuery, so a JSON-typed column
+receives a JSON object rather than a pre-serialised string. Landed in commit `1d4d1b4`. A follow-up
+fix in commit `64683cc` additionally guards against non-finite floats (`NaN`/`Infinity`/`-Infinity`),
+which `json.dumps(..., default=str)` does not route through `default` and would otherwise make
+BigQuery reject an entire load batch over one bad numeric field; those now become JSON `null` via
+`parse_constant`. Verified with a real BigQuery round trip (`json_type(payload) = 'object'`, fields
+readable via `json_value`) and guarded going forward by
+`dbt/tests/staging/assert_raw_payloads_are_objects.sql` (checked against the real, full-scale
+backfill below: passes).
+
+**Short validation reload (with the fixed writer): clean.** Same ~5-8 day window as the earlier
+attempt (4,107 + 2,668 rows), no duplicate keys within the load, and this time
+`core.core_search_daily` came back with real, non-NULL values (`property`, `date`, `clicks`, etc. all
+populated; `sum(clicks)` non-NULL).
+
+**Full 480-day backfill: completed.** Both properties, both dimension sets, `full=True`. Took
+4,603.2s (~76.7 minutes). All four steps `status=ok`:
+
+| Step | Rows |
+|---|---:|
+| `gsc.page_query.apex` | 774,837 |
+| `gsc.page_device_country.apex` | 555,761 |
+| `gsc.page_query.www` | 46,110 |
+| `gsc.page_device_country.www` | 26,871 |
+
+No API rate-limiting was encountered; the run completed in one pass.
+
+**Raw table state after the backfill** (includes the short-reload rows, which overlap the tail of
+the full-backfill window — expected and harmless, resolved by staging's latest-row dedup):
+
+| Table | Rows | Date range |
+|---|---:|---|
+| `raw_gsc.page_query` | 825,054 | 2025-06-04 .. 2026-09-24 |
+| `raw_gsc.page_device_country` | 585,300 | 2025-06-04 .. 2026-09-24 |
+
+Zero duplicate `key` values were found *within* either the short-reload run or the full-backfill run
+individually (checked by `_run_id`). A small number of cross-run duplicate keys exist (10 keys in
+each table) between the short reload and the full backfill for days in their overlapping ~8-day
+tail — expected, since Search Console can still revise very recent days' query/page rows between two
+calls even with `dataState: final`; staging's `latest_raw` macro resolves these to the most recently
+loaded row per key, which is correct.
+
+**`core.core_search_daily`: 820,947 rows** (one per distinct `(property, date, page, query)` key from
+`stg_gsc__page_query`; the `page_device_country` dimension set has no staging/core model in this
+project, per the original design — see `dbt/models/sources.yml` and
+`dbt/models/staging/gsc/stg_gsc__page_query.sql`).
+
+**Clicks/impressions for 2026-06-23..2026-09-13 (the September investigation's window), and the
+~11,472-click sanity check:**
+
+| Property | Clicks | Impressions |
+|---|---:|---:|
+| `https://sipandscript.com/` (apex) | 318 | 47,905 |
+| `https://www.sipandscript.com/` | 4,779 | 74,551 |
+| **Total, both properties** | **5,097** | **122,456** |
+
+This total was computed two independent ways — from `core.core_search_daily` (built on the
+`page_query` dimension set, which carries the `query` dimension) and directly from
+`raw_gsc.page_device_country` (the `page_device_country` dimension set, which has no `query`
+dimension and so cannot be affected by the API's query-level anonymisation/omission) — and both
+methods agree **exactly** (5,097 clicks, 122,456 impressions, at the per-property level and at the
+per-day level; zero missing days in the window on either side). This rules out query anonymisation as
+the explanation for any gap in this particular measurement, since a page-level (no-query-dimension)
+total would have been *higher* than a query-dimensioned total if rows were being omitted, and it
+was not.
+
+**This total (5,097) is well below the September investigation's reference figure of ~11,472 clicks
+for the same window and properties** — about 44% of it. This session cannot fully explain the gap:
+the loaded data has no missing days, both independently-collected dimension sets agree exactly with
+each other at every level checked (day, property, and total), and the total across all loaded history
+(48,920 clicks, 2,296,750 impressions, 2025-06-04..2026-09-24) is likewise internally consistent
+between both dimension sets. The most likely single explanation this session can point to but not
+confirm: the loader's API calls do not set a `type` parameter, which defaults to `web`-only per the
+Search Console API, whereas a reference figure produced from the Search Console UI (or a script that
+requested `type: "all"` or omitted the parameter differently) can include Image/Video/News search
+types as well and would report a higher total. Other candidates not ruled out: a different property
+definition used by the original investigation (e.g. a domain-level property vs. these two
+URL-prefix properties), or a different date-range/timezone boundary. Whoever owns the loader should
+treat this as an open question, not a confirmed defect in this backfill — the data loaded here is
+internally consistent and complete for the two properties and `web` search type it was configured to
+fetch.
+
+**Top 10 queries by clicks, `https://www.sipandscript.com/`, last 28 days of loaded data
+(2026-08-28..2026-09-24):**
+
+| # | Query | Clicks | Impressions |
+|---|---|---:|---:|
+| 1 | sip and script | 750 | 6,373 |
+| 2 | calligraphy classes near me | 315 | 3,324 |
+| 3 | sip & script | 79 | 814 |
+| 4 | sipandscript | 60 | 530 |
+| 5 | calligraphy class | 56 | 501 |
+| 6 | sip and script near me | 47 | 904 |
+| 7 | sip and script nyc | 43 | 395 |
+| 8 | calligraphy classes | 37 | 453 |
+| 9 | sip & script calligraphy class | 34 | 427 |
+| 10 | calligraphy class near me | 30 | 267 |
+
+**Whole-project `dbt build` after the backfill: `PASS=157 WARN=2 ERROR=0`.** The usual
+`assert_webapp_orders_present` warning, plus a new `assert_reconciliation_variance_recent` warning
+(30 results) — this is because `raw_stripe.balance_transactions` now holds 65,000 rows as of this
+check (the economic truth layer plan's Stripe load, owned by a separate session, appears to be
+in progress; this session did not run the Stripe loader). `raw_cms.orders` remains 0. Neither
+warning is a defect in this task's work; both are expected/pre-existing conditions per
+`docs/runbook.md`.
