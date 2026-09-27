@@ -5,10 +5,18 @@
 -- `metrics_cost_micros`, `metrics_impressions`, `metrics_clicks`, `campaign_name`) so the project
 -- builds and this model produces zero Google rows. Flip the var to true once the transfer has run;
 -- confirm column names/types against `google_ads.INFORMATION_SCHEMA.COLUMNS` at that point.
+-- Final-review I8: the stats table can hold several rows per (segments_date, campaign_id) (one per ad network
+-- type / device segment), so it is summed to one row per campaign-day BEFORE the name join and the union, and
+-- the campaign table is a daily SNAPSHOT (`_DATA_DATE` / `_LATEST_DATE`, no `segments_date`), so the name is the
+-- latest snapshot row per campaign_id. tests/core/assert_google_spend_matches_source.sql checks spend per day
+-- against the source when the var is true. Before flipping the var, compare these column names with
+-- `google_ads.INFORMATION_SCHEMA.COLUMNS`; both var states must compile.
 with google_campaign_stats as (
   {% if var('google_ads_enabled') %}
-  select segments_date, campaign_id, metrics_cost_micros, metrics_impressions, metrics_clicks
+  select segments_date, campaign_id, sum(metrics_cost_micros) as metrics_cost_micros,
+    sum(metrics_impressions) as metrics_impressions, sum(metrics_clicks) as metrics_clicks
   from {{ source('google_ads', 'campaign_stats') }}
+  group by segments_date, campaign_id
   {% else %}
   select
     cast(null as date) as segments_date,
@@ -21,13 +29,13 @@ with google_campaign_stats as (
 ),
 google_campaign as (
   {% if var('google_ads_enabled') %}
-  select campaign_id, campaign_name, segments_date
+  select campaign_id, campaign_name
   from {{ source('google_ads', 'campaign') }}
+  qualify row_number() over (partition by campaign_id order by _DATA_DATE desc) = 1
   {% else %}
   select
     cast(null as int64) as campaign_id,
-    cast(null as string) as campaign_name,
-    cast(null as date) as segments_date
+    cast(null as string) as campaign_name
   limit 0
   {% endif %}
 ),
@@ -36,11 +44,7 @@ google as (
     lower(trim(c.campaign_name)) as campaign_name_norm,
     s.metrics_cost_micros / 1e6 as spend, s.metrics_impressions as impressions, s.metrics_clicks as clicks
   from google_campaign_stats s
-  join (
-    select campaign_id, campaign_name
-    from google_campaign
-    qualify row_number() over (partition by campaign_id order by segments_date desc) = 1
-  ) c using (campaign_id)
+  join google_campaign c using (campaign_id)
 ),
 -- Fix round 2: aggregate the CSV (social) spend at the source, by the NORMALISED
 -- (lower/trim) campaign name, not the raw one. mart_paid_performance's social branch joins spend
