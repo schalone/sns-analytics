@@ -87,6 +87,14 @@ models:
               - date
               - platform
               - campaign_name
+      # Fix round 2: the true uniqueness grain post-normalisation (campaign_name_norm is what
+      # mart_paid_performance's social branch joins on).
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - date
+              - platform
+              - campaign_name_norm
     columns:
       - name: spend
         data_tests: [not_null]

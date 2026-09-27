@@ -33,6 +33,7 @@ google_campaign as (
 ),
 google as (
   select s.segments_date as date, 'google' as platform, cast(s.campaign_id as string) as campaign_id, c.campaign_name,
+    lower(trim(c.campaign_name)) as campaign_name_norm,
     s.metrics_cost_micros / 1e6 as spend, s.metrics_impressions as impressions, s.metrics_clicks as clicks
   from google_campaign_stats s
   join (
@@ -41,9 +42,21 @@ google as (
     qualify row_number() over (partition by campaign_id order by segments_date desc) = 1
   ) c using (campaign_id)
 ),
+-- Fix round 2: aggregate the CSV (social) spend at the source, by the NORMALISED
+-- (lower/trim) campaign name, not the raw one. mart_paid_performance's social branch joins spend
+-- to session aggregates on the normalised name (round 1 fix); if core_ad_spend still carried one
+-- row per raw campaign_name, two spend rows differing only by case/whitespace would both join the
+-- same social_agg row and each report its full sessions/orders/revenue -- double counting the
+-- spend conservation test cannot see (it only checks total spend, not per-row attribution).
+-- Normalising and summing here instead makes `(date, platform, campaign_name_norm)` the true
+-- uniqueness grain of every core_ad_spend row.
 csv as (
-  select date, platform, cast(null as string) as campaign_id, campaign_name, spend, impressions, clicks
+  select date, platform, cast(null as string) as campaign_id,
+    any_value(trim(campaign_name)) as campaign_name,
+    lower(trim(campaign_name)) as campaign_name_norm,
+    sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks
   from {{ ref('stg_spend__csv') }}
+  group by date, platform, lower(trim(campaign_name))
 ),
 unioned as (
   select * from google
@@ -63,4 +76,4 @@ select u.*, m.metro_slug, mk.metro_key
 from unioned u
 left join {{ ref('campaign_metro_map') }} m on u.campaign_name like concat(m.campaign_name_pattern, '%')
 left join {{ ref('core_metros') }} mk on mk.slug = m.metro_slug
-qualify row_number() over (partition by u.date, u.platform, u.campaign_id, u.campaign_name order by length(m.campaign_name_pattern) desc) = 1
+qualify row_number() over (partition by u.date, u.platform, u.campaign_id, u.campaign_name_norm order by length(m.campaign_name_pattern) desc) = 1

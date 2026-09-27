@@ -48,11 +48,16 @@ social_agg as (
   select ss.session_date as date, ss.platform, ss.campaign_name_norm, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue
   from social_sessions ss left join orders_by_session ob using (session_key) group by 1, 2, 3
 )
-select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.metro_key, sp.spend, sp.impressions, sp.clicks,
+-- Fix round 2: core_ad_spend is now unique on (date, platform, campaign_name_norm) -- CSV spend is
+-- pre-aggregated by the normalised name at the source, so this join can key on the same
+-- already-normalised column on both sides instead of re-normalising sp.campaign_name here.
+-- campaign_name_norm is carried through to the output so assert_paid_performance_no_shared_
+-- attribution.sql can check the social platforms' grain directly.
+select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.campaign_name_norm, sp.metro_key, sp.spend, sp.impressions, sp.clicks,
   coalesce(g.sessions, so.sessions, 0) as sessions, coalesce(g.orders, so.orders, 0) as orders, coalesce(g.seats, so.seats, 0) as seats,
   coalesce(g.net_revenue, so.net_revenue, 0) as net_revenue,
   safe_divide(coalesce(g.net_revenue, so.net_revenue, 0), nullif(sp.spend, 0)) as roas,
   safe_divide(sp.spend, nullif(coalesce(g.orders, so.orders, 0), 0)) as cpa
 from {{ ref('core_ad_spend') }} sp
 left join google_agg g on sp.platform = 'google' and g.date = sp.date and g.campaign_id = sp.campaign_id
-left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform and so.campaign_name_norm = lower(trim(sp.campaign_name))
+left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform and so.campaign_name_norm = sp.campaign_name_norm
