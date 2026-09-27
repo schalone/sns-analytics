@@ -71,28 +71,12 @@ models:
   - name: stg_woo__orders
     columns:
       - name: order_key
-        data_tests:
-          # 2026-09-27: sipandscript_new_ds.orders has one exact-duplicate row pair (id 514177,
-          # 2 identical rows -- its order_line_items rows 36875/128582 are duplicated the same
-          # way, see stg_woo__order_line_items below). This is a known artifact of how the
-          # WooCommerce archive was exported, not a modelling error, so this test warns instead
-          # of failing the build.
-          - unique:
-              config:
-                severity: warn
-          - not_null
+        data_tests: [unique, not_null]
 
   - name: stg_woo__order_line_items
     columns:
       - name: order_item_key
-        data_tests:
-          # 2026-09-27: 2 duplicate order_line_items rows (ids 36875, 128582); row 128582 belongs
-          # to the duplicated order 514177 above, row 36875 to order 140648 (single duplicated
-          # line, order itself not duplicated). Same archive-export artifact -- warn, not fail.
-          - unique:
-              config:
-                severity: warn
-          - not_null
+        data_tests: [unique, not_null]
 
   - name: stg_woo__products
     columns:

@@ -24,6 +24,7 @@ ENTITIES = {
 if __name__ == "__main__":
     writer = RawWriter(bigquery.Client(project=PROJECT, location=LOCATION), PROJECT, "bootstrap", LOCATION)
     for dataset, entities in ENTITIES.items():
+        writer.ensure_dataset(dataset)
         for entity in entities:
             writer.ensure_table(dataset, entity)
             print("ok", dataset, entity)
