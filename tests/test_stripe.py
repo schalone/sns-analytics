@@ -6,7 +6,7 @@ import stripe
 from loaders.common.bq import RawWriter
 from loaders.common.config import Settings
 from loaders.common.state import LoadState
-from loaders.stripe_loader import BACKFILL_FROM, OVERLAP, load_stripe
+from loaders.stripe_loader import OVERLAP, load_stripe
 from tests.fakes import FakeBqClient
 
 UTC = dt.timezone.utc
@@ -27,8 +27,10 @@ class FakeStripe:
         # Real stripe-python objects (constructed locally, no network call) so serialisation is
         # exercised against the actual SDK shape rather than a hand-rolled dict stand-in.
         txn = stripe.BalanceTransaction.construct_from({
-            "id": "txn_1", "created": 1790336000, "type": "charge", "amount": 13600, "fee": 425, "net": 13175,
-            "source": {"id": "ch_1", "object": "charge", "metadata": {"OrderGuid": "1111"}},
+            "id": "txn_1", "object": "balance_transaction", "created": 1790336000, "type": "charge", "amount": 13600, "fee": 425, "net": 13175,
+            "source": {"id": "ch_1", "object": "charge", "description": "Sip & Script - Order 70123",
+                       "receipt_email": "jane@example.com", "billing_details": {"email": "jane@example.com", "name": "Jane Q Public"},
+                       "metadata": {"CheckoutSessionKey": "22222222-2222-2222-2222-222222222222", "OrderId": "99887", "customer_name": "Jane Q Public"}},
         }, "sk_test_x")
         refund = stripe.Refund.construct_from({
             "id": "re_1", "created": 1758803600, "amount": 6800, "status": "succeeded",
@@ -41,16 +43,27 @@ class FakeStripe:
 def _settings(): return Settings.from_env({"CMS_BASE_URL": "x", "STRIPE_RESTRICTED_KEY": "rk_test"})
 
 
-def test_full_backfill_starts_at_launch_and_expands_source():
+def test_full_backfill_has_no_created_filter_and_stores_sanitised_payload():
     bq = FakeBqClient(); api = FakeStripe()
     res = load_stripe(_settings(), RawWriter(bq, "sipandscript", "r"), LoadState(bq, "sipandscript"), full=True, api=api)
     assert [r.status for r in res] == ["ok"] * 4
-    assert api.BalanceTransaction.calls[0] == {"limit": 100, "created": {"gte": int(BACKFILL_FROM.timestamp())}, "expand": ["data.source"]}
+    assert api.BalanceTransaction.calls[0] == {"limit": 100, "expand": ["data.source"]}
+    assert api.Refund.calls[0] == {"limit": 100}
     dest, rows = [l for l in bq.loads if l[0].endswith("raw_stripe.balance_transactions")][0]
     assert rows[0]["key"] == "txn_1" and rows[0]["updated_at"] == "2026-09-25T11:33:20+00:00"
-    payload = json.loads(rows[0]["payload"])
-    assert isinstance(payload, dict) and isinstance(payload["source"], dict)
-    assert payload["source"]["metadata"]["OrderGuid"] == "1111"
+    raw = rows[0]["payload"]
+    for leaked in ("jane@example.com", "Jane Q Public", "99887", "Order 70123"):
+        assert leaked not in raw
+    payload = json.loads(raw)
+    assert payload["source"]["metadata"] == {"CheckoutSessionKey": "22222222-2222-2222-2222-222222222222"}
+    assert payload["source"]["order_ref"] == "70123"
+    assert len(payload["source"]["customer_hash"]) == 64
+
+
+def test_first_incremental_run_without_watermark_loads_full_history():
+    bq = FakeBqClient(); api = FakeStripe()
+    load_stripe(_settings(), RawWriter(bq, "sipandscript", "r"), LoadState(bq, "sipandscript"), api=api)
+    assert "created" not in api.BalanceTransaction.calls[0]
 
 
 def test_incremental_uses_watermark_minus_overlap():

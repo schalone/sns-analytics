@@ -1,4 +1,4 @@
-"""Stripe: balance transactions (with expanded source for order metadata), refunds, disputes, payouts. Reconciliation only."""
+"""Stripe: balance transactions (expanded source), refunds, disputes, payouts. Every object is sanitised before it is stored."""
 from __future__ import annotations
 
 import datetime as dt
@@ -7,11 +7,11 @@ from collections.abc import Mapping
 from loaders.common.bq import RawRow, RawWriter
 from loaders.common.config import RAW_STRIPE, Settings
 from loaders.common.state import LoadState, StepResult, run_step
+from loaders.stripe_sanitize import sanitize
 
 STRIPE_ENTITIES = ("balance_transactions", "refunds", "disputes", "payouts")
 RESOURCE = {"balance_transactions": "BalanceTransaction", "refunds": "Refund", "disputes": "Dispute", "payouts": "Payout"}
 EXPAND = {"balance_transactions": ["data.source"]}
-BACKFILL_FROM = dt.datetime(2026, 6, 19, tzinfo=dt.timezone.utc)   # earlier history is WooCommerce, already archived
 OVERLAP = dt.timedelta(days=1)
 SOURCE = "stripe"
 
@@ -45,15 +45,16 @@ def load_stripe(settings: Settings, writer: RawWriter, state: LoadState, full: b
                 import stripe as sdk  # type: ignore
                 sdk.api_key = settings.stripe_key
             wm = None if full else state.get(SOURCE, entity)
-            start = (wm.updated_at - OVERLAP) if wm else BACKFILL_FROM
-            kw = {"limit": 100, "created": {"gte": int(start.timestamp())}}
+            kw = {"limit": 100}
+            if wm:   # no watermark, or --full: page the whole account history
+                kw["created"] = {"gte": int((wm.updated_at - OVERLAP).timestamp())}
             if entity in EXPAND:
                 kw["expand"] = EXPAND[entity]
             resource = getattr(sdk, RESOURCE[entity])
             batch, total, newest = [], 0, None
             for obj in resource.list(**kw).auto_paging_iter():
                 created = dt.datetime.fromtimestamp(int(obj["created"]), tz=dt.timezone.utc)
-                batch.append(RawRow(obj["id"], created, _plain(obj)))
+                batch.append(RawRow(obj["id"], created, sanitize(entity, _plain(obj))))
                 newest = created if newest is None or created > newest else newest
                 if len(batch) >= 5000:
                     total += writer.append(RAW_STRIPE, entity, batch); batch = []
