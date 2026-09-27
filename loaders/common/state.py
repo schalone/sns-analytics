@@ -71,10 +71,13 @@ def _param(name, value):
     return bigquery.ScalarQueryParameter(name, "STRING", value)
 
 
-def run_step(state: LoadState, run_id: str, step: str, fn: Callable[[], int]) -> StepResult:
+def run_step(state: LoadState, run_id: str, step: str, fn: Callable[[], "int | tuple[int, str]"]) -> StepResult:
+    """Run one loader step, never raising. `fn` returns a row count, or (row count, message) when an ok step
+    has something worth recording in ops.run_log (e.g. rows it skipped)."""
     try:
-        rows = int(fn() or 0)
-        result = StepResult(step, "ok", rows)
+        out = fn()
+        rows, message = out if isinstance(out, tuple) else (out, "")
+        result = StepResult(step, "ok", int(rows or 0), message)
     except Exception as e:  # noqa: BLE001 - a loader failure must never stop the run
         result = StepResult(step, "error", 0, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-1500:]}")
     try:
