@@ -495,3 +495,75 @@ unit_tests:
       rows:
         - {event_key: E1, snapshot_date: "2024-05-03", cumulative_seats: 3, remaining_capacity: 1, pct_sold: 0.75}
         - {event_key: E1, snapshot_date: "2024-05-04", cumulative_seats: 5, remaining_capacity: 0, pct_sold: 1.0}
+
+  - name: event_economics_outcomes_and_pace
+    description: A sold-out event with spend data; an event with no capacity; an event nobody booked; an undated event with a booking but no curve.
+    model: core_event_economics
+    given:
+      - input: ref('core_events')
+        rows:
+          - {event_key: E1, title: "Sold out", event_date: "2026-09-10", start_at: "2026-09-10 22:30:00", time_zone: "America/New_York", metro_key: m1, capacity: 10, capacity_source: cms, ticket_price: 63, platform_era: bronco, has_event_date: true}
+          - {event_key: E2, title: "No capacity", event_date: "2024-05-04", start_at: "2024-05-04 23:00:00", time_zone: "America/Chicago", metro_key: m1, capacity: null, capacity_source: none, ticket_price: 50, platform_era: legacy_event_tickets, has_event_date: true}
+          - {event_key: E3, title: "Nobody came", event_date: "2026-01-15", start_at: "2026-01-16 00:00:00", time_zone: "America/New_York", metro_key: m1, capacity: 12, capacity_source: cms, ticket_price: 70, platform_era: legacy_event_tickets, has_event_date: true}
+          - {event_key: E4, title: "No date", event_date: null, start_at: null, time_zone: "America/New_York", metro_key: m1, capacity: 8, capacity_source: cms, ticket_price: 45, platform_era: legacy_event_tickets, has_event_date: false}
+      - input: ref('core_bookings')
+        rows:
+          - {booking_key: b1, event_key: E1, customer_hash: h1, seats: 4, net_seats: 4, realized_revenue: 252, refunded_amount: 0, processing_fee: 8, fee_source: actual, net_distributable: 244, sns_share: 97.6, instructor_share: 146.4, is_cancelled: false}
+          - {booking_key: b2, event_key: E1, customer_hash: h2, seats: 6, net_seats: 6, realized_revenue: 378, refunded_amount: 0, processing_fee: 12, fee_source: actual, net_distributable: 366, sns_share: 146.4, instructor_share: 219.6, is_cancelled: false}
+          - {booking_key: b3, event_key: E2, customer_hash: h1, seats: 3, net_seats: 3, realized_revenue: 150, refunded_amount: 0, processing_fee: 5, fee_source: estimated, net_distributable: 145, sns_share: 58, instructor_share: 87, is_cancelled: false}
+          - {booking_key: b4, event_key: E4, customer_hash: h3, seats: 2, net_seats: 2, realized_revenue: 90, refunded_amount: 0, processing_fee: 3, fee_source: actual, net_distributable: 87, sns_share: 34.8, instructor_share: 52.2, is_cancelled: false}
+      - input: ref('core_event_daily')
+        rows:
+          - {event_key: E1, snapshot_date: "2026-09-05", days_until_event: 5, cumulative_seats: 4, pct_sold: 0.4, ad_spend_that_day: 15, has_spend_data_that_day: true}
+          - {event_key: E1, snapshot_date: "2026-09-09", days_until_event: 1, cumulative_seats: 10, pct_sold: 1.0, ad_spend_that_day: 0, has_spend_data_that_day: false}
+          - {event_key: E1, snapshot_date: "2026-09-10", days_until_event: 0, cumulative_seats: 10, pct_sold: 1.0, ad_spend_that_day: 0, has_spend_data_that_day: false}
+          - {event_key: E2, snapshot_date: "2024-05-03", days_until_event: 1, cumulative_seats: 3, pct_sold: null, ad_spend_that_day: 0, has_spend_data_that_day: false}
+          - {event_key: E2, snapshot_date: "2024-05-04", days_until_event: 0, cumulative_seats: 3, pct_sold: null, ad_spend_that_day: 0, has_spend_data_that_day: false}
+          - {event_key: E3, snapshot_date: "2026-01-15", days_until_event: 0, cumulative_seats: 0, pct_sold: 0, ad_spend_that_day: 0, has_spend_data_that_day: false}
+    expect:
+      # dbt's unit-test compiler derives the comparison column set from the first expected row and
+      # every row must supply it. E3's and E4's values below for contribution_per_available_seat,
+      # contribution_per_sold_seat, days_before_at_50pct and days_before_at_75pct are computed by
+      # hand from the rules, filling the columns the brief's rows left out; none of the brief's
+      # stated values changed.
+      rows:
+        - {event_key: E1, weekday: Thursday, is_weekend: false, month: 9, season: fall, start_hour_local: 18, seats_sold: 10, bookings: 2, customers: 2, utilisation: 1.0, utilisation_band: "95-100", sold_out: true, realized_revenue: 630, processing_fee: 20, fee_actual_share: 1.0, net_distributable: 610, sns_share: 244, instructor_share: 366, instructor_materials_estimate: 60, allocated_ad_spend: 15, has_ad_spend_data: true, sns_contribution_before_ads: 244, sns_contribution: 229, sns_share_per_available_seat: 24.4, sns_share_per_sold_seat: 24.4, contribution_per_available_seat: 22.9, contribution_per_sold_seat: 22.9, first_sale_days_before: 5, days_before_at_25pct: 5, days_before_at_50pct: 1, days_before_at_75pct: 1, days_before_at_sellout: 1}
+        - {event_key: E2, weekday: Saturday, is_weekend: true, month: 5, season: spring, start_hour_local: 18, seats_sold: 3, bookings: 1, customers: 1, utilisation: null, utilisation_band: null, sold_out: false, realized_revenue: 150, processing_fee: 5, fee_actual_share: 0.0, net_distributable: 145, sns_share: 58, instructor_share: 87, instructor_materials_estimate: 18, allocated_ad_spend: null, has_ad_spend_data: false, sns_contribution_before_ads: 58, sns_contribution: null, sns_share_per_available_seat: null, sns_share_per_sold_seat: 19.333333, contribution_per_available_seat: null, contribution_per_sold_seat: null, first_sale_days_before: 1, days_before_at_25pct: null, days_before_at_50pct: null, days_before_at_75pct: null, days_before_at_sellout: null}
+        - {event_key: E3, weekday: Thursday, is_weekend: false, month: 1, season: winter, start_hour_local: 19, seats_sold: 0, bookings: 0, customers: 0, utilisation: 0.0, utilisation_band: "<40", sold_out: false, realized_revenue: 0, processing_fee: 0, fee_actual_share: null, net_distributable: 0, sns_share: 0, instructor_share: 0, instructor_materials_estimate: 0, allocated_ad_spend: null, has_ad_spend_data: false, sns_contribution_before_ads: 0, sns_contribution: null, sns_share_per_available_seat: 0.0, sns_share_per_sold_seat: null, contribution_per_available_seat: null, contribution_per_sold_seat: null, first_sale_days_before: null, days_before_at_25pct: null, days_before_at_50pct: null, days_before_at_75pct: null, days_before_at_sellout: null}
+        - {event_key: E4, weekday: null, is_weekend: null, month: null, season: null, start_hour_local: null, seats_sold: 2, bookings: 1, customers: 1, utilisation: 0.25, utilisation_band: "<40", sold_out: false, realized_revenue: 90, processing_fee: 3, fee_actual_share: 1.0, net_distributable: 87, sns_share: 34.8, instructor_share: 52.2, instructor_materials_estimate: 12, allocated_ad_spend: null, has_ad_spend_data: false, sns_contribution_before_ads: 34.8, sns_contribution: null, sns_share_per_available_seat: 4.35, sns_share_per_sold_seat: 17.4, contribution_per_available_seat: null, contribution_per_sold_seat: null, first_sale_days_before: null, days_before_at_25pct: null, days_before_at_50pct: null, days_before_at_75pct: null, days_before_at_sellout: null}
+
+  - name: customers_span_both_eras
+    description: One person who bought on the legacy site and on the new platform is one customer. Unresolved orders create no customer.
+    model: core_customers
+    given:
+      - input: ref('core_orders')
+        rows:
+          - {order_key: "woo-1", customer_hash: h1, identity_source: stripe, created_at: "2025-01-10 15:00:00", business_date: "2025-01-10", platform_era: legacy_event_tickets}
+          - {order_key: "woo-2", customer_hash: h1, identity_source: woo_propagated, created_at: "2025-03-01 15:00:00", business_date: "2025-03-01", platform_era: legacy_event_tickets}
+          - {order_key: A, customer_hash: h1, identity_source: cms, created_at: "2026-08-01 15:00:00", business_date: "2026-08-01", platform_era: bronco}
+          - {order_key: B, customer_hash: h2, identity_source: cms, created_at: "2026-08-02 15:00:00", business_date: "2026-08-02", platform_era: bronco}
+          - {order_key: "woo-3", customer_hash: "woo-cust-66", identity_source: woo_surrogate, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
+          - {order_key: "woo-4", customer_hash: null, identity_source: unresolved, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
+      - input: ref('core_bookings')
+        rows:
+          - {booking_key: k1, order_key: "woo-1", event_key: E1, customer_hash: h1, identity_source: stripe, purchase_date: "2025-01-10", net_seats: 2, realized_revenue: 100, refunded_amount: 0, sns_share: 38}
+          - {booking_key: k2, order_key: "woo-2", event_key: E2, customer_hash: h1, identity_source: woo_propagated, purchase_date: "2025-03-01", net_seats: 1, realized_revenue: 50, refunded_amount: 0, sns_share: 19}
+          - {booking_key: k3, order_key: A, event_key: E3, customer_hash: h1, identity_source: cms, purchase_date: "2026-08-01", net_seats: 2, realized_revenue: 126, refunded_amount: 0, sns_share: 48.8}
+          - {booking_key: k4, order_key: B, event_key: E3, customer_hash: h2, identity_source: cms, purchase_date: "2026-08-02", net_seats: 1, realized_revenue: 63, refunded_amount: 63, sns_share: -0.8}
+          - {booking_key: k5, order_key: "woo-3", event_key: E1, customer_hash: "woo-cust-66", identity_source: woo_surrogate, purchase_date: "2019-08-02", net_seats: 1, realized_revenue: 40, refunded_amount: 0, sns_share: 15}
+      - input: ref('core_events')
+        rows:
+          - {event_key: E1, metro_key: boston}
+          - {event_key: E2, metro_key: boston}
+          - {event_key: E3, metro_key: nashville}
+      - input: ref('core_session_orders')
+        rows:
+          - {order_key: B, session_key: s1}
+      - input: ref('core_sessions')
+        rows:
+          - {session_key: s1, default_channel_group: "Paid Social"}
+    expect:
+      rows:
+        - {customer_hash: h1, is_surrogate: false, first_purchase_date: "2025-01-10", most_recent_purchase_date: "2026-08-01", first_era: legacy_event_tickets, bought_in_both_eras: true, lifetime_orders: 3, lifetime_events: 3, lifetime_seats: 5, lifetime_realized_revenue: 276, lifetime_sns_share: 105.8, home_metro_key: boston, first_order_channel: null, is_repeat: true, days_first_to_second_purchase: 50}
+        - {customer_hash: h2, is_surrogate: false, first_purchase_date: "2026-08-02", most_recent_purchase_date: "2026-08-02", first_era: bronco, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 0, lifetime_sns_share: -0.8, home_metro_key: nashville, first_order_channel: "Paid Social", is_repeat: false, days_first_to_second_purchase: null}
+        - {customer_hash: "woo-cust-66", is_surrogate: true, first_purchase_date: "2019-08-02", most_recent_purchase_date: "2019-08-02", first_era: legacy_event_tickets, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 40, lifetime_sns_share: 15, home_metro_key: boston, first_order_channel: null, is_repeat: false, days_first_to_second_purchase: null}
