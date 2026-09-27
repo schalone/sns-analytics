@@ -137,19 +137,23 @@ One read-only controller, `Controllers/AnalyticsExportController.cs`, route `GET
 | Entity | Fields |
 |---|---|
 | `orders` | orderKey, orderNumber, status, createdAt, paidAt, updatedAt, currency, subtotalCents, discountCents, serviceFeeCents, giftCardAmountCents, totalCents, promoCode, affiliateKey, memberKey, customerHash, billingCity, billingState, billingZip, checkoutSessionKey, stripeCheckoutSessionId, source (`webapp` \| `wordpressImport`), wordpressOrderId. (The payment intent id is not stored on orders; Stripe reconciliation joins on the order GUID in Stripe metadata.) |
-| `order_items` | orderItemKey, orderKey, itemType (`ticket` \| `giftCard` \| `adHoc` \| `other`), eventKey, ticketTypeKey, quantity, unitPriceCents, lineTotalCents, updatedAt |
-| `tickets` | ticketKey, orderKey (null for tickets whose checkout never became an order), orderItemKey, eventKey, status (Paid/Used/Held/Pending/Refunded/Expired/Transferred), transferredFromTicketKey, createdAt, updatedAt |
-| `refunds` | refundKey, orderKey, amountCents, reason, status, stripeRefundId, createdAt, updatedAt |
-| `promo_redemptions` | redemptionKey, orderKey, promoCode, discountCents, redeemedAt, updatedAt |
-| `gift_cards` | giftCardKey, orderKey, initialCents, balanceCents, status, createdAt, updatedAt |
+| `order_items` | orderItemKey, orderKey, checkoutSessionKey (nullable), itemType, ticketKey, giftCardKey, eventKey, quantity, unitPriceCents, lineTotalCents, status, createdAt, updatedAt |
+| `tickets` | ticketKey, orderKey (nullable), orderItemKey (nullable), eventKey, status, transferredFromTicketKey, createdAt, updatedAt |
+| `refunds` | refundKey, orderKey, ticketKey, amountCents, currency, reason (ALWAYS null), status, stripeRefundId, createdAt, completedAt, updatedAt |
+| `promo_redemptions` | redemptionKey, orderKey, checkoutSessionKey (nullable), promoCode, eventKey, orderDiscountCents, status, reservedAt, redeemedAt, updatedAt |
+| `gift_cards` | giftCardKey, orderKey, initialCents, balanceCents, currency, status, issuedAt, createdAt, updatedAt |
 | `gift_card_transactions` | transactionKey, giftCardKey, orderKey, amountCents, type, createdAt, updatedAt |
-| `checkout_sessions` | checkoutSessionKey, status, eventKey, guestCount, memberKey, customerHash, orderKey, createdAt, holdExpiresAt, updatedAt |
-| `events` | eventKey, title, urlPath, eventDate, startTime, endTime, timeZone, venueKey, metroKey, instructorKey, category, eventType, theme, status, capacity, ticketPriceCents, isVirtual, externalTicketUrl, wordpressSourceId, publishedAt, updatedAt |
-| `venues` | venueKey, name, city, state, zip, latitude, longitude, metroKey, capacity, timeZone, status, updatedAt |
-| `metros` | metroKey, name, slug, state, centerLatitude, centerLongitude, radiusMiles, status, updatedAt |
-| `instructors` | instructorKey, name, urlPath, city, state, startDate, status, updatedAt |
+| `checkout_sessions` | checkoutSessionKey, status, memberKey, customerHash, orderKey, eventKey, guestCount, createdAt, holdExpiresAt, lastActivityAt, updatedAt |
+| `events` | eventKey, title, urlPath, eventDate (`yyyy-MM-dd`, venue-local calendar date), startTime (`HH:mm:ss`, venue-local), endTime (`HH:mm:ss`, venue-local), startAtUtc (ISO-8601 UTC, nullable), endAtUtc (ISO-8601 UTC, nullable), timeZone, venueKey, metroKey, instructorKey, category, eventType, theme (may hold several names joined), status, capacity, ticketPriceCents, isVirtual, noTickets, externalTicketUrl, wordpressSourceId, createdAt, updatedAt |
+| `venues` | venueKey, name, city, state, zip, latitude, longitude, metroKey, capacity, timeZone, wordpressSourceId, createdAt, updatedAt |
+| `metros` | metroKey, name, slug, urlPath, state, centerPlace, centerLatitude, centerLongitude, radiusMiles, createdAt, updatedAt |
+| `instructors` | instructorKey, name, urlPath, city, state, startDate (`yyyy-MM-dd`), noLongerTeaches, wordpressSourceId, createdAt, updatedAt |
+
+Envelope: `entity`, `generatedAt`, `items`, `nextCursor` (opaque token; the loader already treats it as opaque).
 
 `updatedAt` is mandatory on every entity. Orders, order items, tickets, checkout sessions, promo redemptions and gift cards have an `UpdatedAt` column; refunds use `COALESCE(CompletedAt, CreatedAt)`; gift card transactions are immutable and use `CreatedAt`. No schema migration is needed. Umbraco entities use the content `UpdateDate`. `startTime`/`endTime` are time-only per the repo rule; `eventDate` is the date.
+
+**Differences found during implementation.** `ticketTypeKey`, `events.publishedAt`, and the `status` fields on venues/metros/instructors are not exported (content is published-only; `instructors.noLongerTeaches` is provided instead). `orders.billing*` come from the order's shipping columns. `promo_redemptions.orderDiscountCents` is the order's total discount, not a per-redemption amount. `refunds.reason` is never exported because it is admin free text. Event `startTime`/`endTime` are venue-local and `startAtUtc`/`endAtUtc` are the same instants in UTC. Cursors are opaque encrypted tokens bound to their entity. `full` accepts `1`/`0`/`true`/`false`.
 
 Events, venues, metros and instructors are read through the typed Umbraco models (published content only). The export runs inside the app's existing request pipeline; pages are capped so a full backfill of 4k events or 6k orders is a few dozen requests.
 
