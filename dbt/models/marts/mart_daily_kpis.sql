@@ -14,6 +14,13 @@
 -- doesn't apply to sessions, which carry no metro), and on any date flagged `unreliable_ga4` in the
 -- `date_flags` seed (the Jun 19-22 GA4 cutover blackout). The numerator is coalesced to 0 so a
 -- channel/day cell with real sessions and zero matching orders reports `cvr = 0`, not NULL.
+--
+-- Final-review I1: orders sit on exactly one row per (date, pre_launch, channel, metro) and sessions only on
+-- the metro_key-null row, so the CVR numerator must count the channel's ticket orders over ALL metro values,
+-- not just the no-metro ones. `channel_ticket_orders` is that per-date-and-channel total, carried on the
+-- null-metro row only (NULL on metro rows); dashboards compute CVR as SUM(channel_ticket_orders) / SUM(sessions)
+-- over null-metro rows. The grid guarantees a null-metro row for every (date, pre_launch, channel) that has
+-- orders, so the total is never lost when every order of a channel-day carries a metro.
 with s as (
   select session_date as business_date, pre_launch, default_channel_group as channel_group, cast(null as string) as metro_key,
     count(*) as sessions, countif(engaged) as engaged_sessions
@@ -23,7 +30,8 @@ o as (
   select o.business_date, o.pre_launch, coalesce(cs.default_channel_group, 'Unattributed') as channel_group,
     coalesce(e.metro_key, o.billing_metro_key) as metro_key,
     count(*) as orders, countif(o.order_type = 'ticket') as ticket_orders, sum(o.seats) as seats,
-    sum(o.gross_revenue) as gross_revenue, sum(o.net_revenue) as net_revenue, countif(o.is_first_order) as new_customers
+    sum(o.gross_revenue) as gross_revenue, sum(o.net_revenue) as net_revenue,
+    sum(if(o.order_type = 'ticket', o.net_revenue, 0)) as ticket_net_revenue, countif(o.is_first_order) as new_customers
   from {{ ref('core_orders') }} o
   left join {{ ref('core_session_orders') }} so using (order_key)
   left join {{ ref('core_sessions') }} cs using (session_key)
@@ -31,16 +39,24 @@ o as (
   left join {{ ref('core_events') }} e using (event_key)
   group by 1, 2, 3, 4
 ),
+oc as (
+  select business_date, pre_launch, channel_group, sum(ticket_orders) as channel_ticket_orders
+  from o group by 1, 2, 3
+),
 grid as (
   select business_date, pre_launch, channel_group, metro_key from s
   union distinct
   select business_date, pre_launch, channel_group, metro_key from o
+  union distinct
+  select business_date, pre_launch, channel_group, cast(null as string) from oc
 )
 select g.business_date, g.pre_launch, g.channel_group, g.metro_key,
   coalesce(s.sessions, 0) as sessions, coalesce(s.engaged_sessions, 0) as engaged_sessions,
   coalesce(o.orders, 0) as orders, coalesce(o.ticket_orders, 0) as ticket_orders, coalesce(o.seats, 0) as seats,
   coalesce(o.gross_revenue, 0) as gross_revenue, coalesce(o.net_revenue, 0) as net_revenue,
-  case when g.metro_key is null and f.flag is null then safe_divide(coalesce(o.ticket_orders, 0), s.sessions) end as cvr,
+  coalesce(o.ticket_net_revenue, 0) as ticket_net_revenue,
+  case when g.metro_key is null then coalesce(oc.channel_ticket_orders, 0) end as channel_ticket_orders,
+  case when g.metro_key is null and f.flag is null then safe_divide(coalesce(oc.channel_ticket_orders, 0), s.sessions) end as cvr,
   safe_divide(o.net_revenue, o.orders) as aov, coalesce(o.new_customers, 0) as new_customers,
   f.flag is not null as unreliable_ga4
 from grid g
@@ -48,4 +64,6 @@ left join s on g.business_date = s.business_date and g.pre_launch = s.pre_launch
   and coalesce(g.metro_key, '') = coalesce(s.metro_key, '')
 left join o on g.business_date = o.business_date and g.pre_launch = o.pre_launch and g.channel_group = o.channel_group
   and coalesce(g.metro_key, '') = coalesce(o.metro_key, '')
+left join oc on g.metro_key is null and g.business_date = oc.business_date and g.pre_launch = oc.pre_launch
+  and g.channel_group = oc.channel_group
 left join {{ ref('date_flags') }} f on f.date = g.business_date and f.flag = 'unreliable_ga4'

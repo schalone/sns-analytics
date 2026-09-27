@@ -3,12 +3,17 @@ version: 2
 models:
   - name: mart_daily_kpis
     description: >
-      Day x channel_group x metro grain. `metro_key` is NULL on every session-only row (GA4 geo
-      city is not a metro), so `cvr` (ticket_orders / sessions) is only ever populated on rows
-      where `metro_key is null`; metro rows still carry their own orders and revenue. `cvr` is also
-      forced to NULL on any `business_date` flagged `unreliable_ga4` in the `date_flags` seed (the
-      Jun 19-22 GA4 cutover blackout) and is NULL rather than 0 or an error whenever sessions are
-      absent or zero (`safe_divide`). `aov` is similarly NULL when there are no orders in the cell.
+      Day x channel_group x metro grain. Orders, ticket orders, seats and revenue sit on exactly one row per
+      (business_date, pre_launch, channel_group, metro_key): the metro of the order's event, else of its billing
+      zip, else NULL. Sessions and engaged sessions sit only on the `metro_key is null` row (GA4 geo city is not
+      a metro). So order and revenue totals are summed over ALL rows, and only sessions and the CVR use
+      `metro_key is null` rows. `channel_ticket_orders` is the ticket orders of that date, pre_launch and channel
+      summed over ALL metro values, carried on the null-metro row only (NULL on metro rows); `cvr` =
+      channel_ticket_orders / sessions on the null-metro row, and a dashboard computes CVR over any window as
+      SUM(channel_ticket_orders) / SUM(sessions) over null-metro rows. `cvr` is NULL on metro rows, whenever
+      sessions are absent or zero, and on any `business_date` flagged `unreliable_ga4` in the `date_flags` seed
+      (the Jun 19-22 GA4 cutover blackout). `ticket_net_revenue` is the net revenue of ticket orders only (the
+      numerator for ticket AOV); `aov` is NULL when the cell has no orders.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -32,8 +37,16 @@ models:
         data_tests: [not_null]
       - name: net_revenue
         data_tests: [not_null]
+      - name: ticket_net_revenue
+        data_tests: [not_null]
       - name: new_customers
         data_tests: [not_null]
+      - name: channel_ticket_orders
+        description: NULL exactly on metro rows; never NULL on the null-metro row.
+        data_tests:
+          - not_null:
+              config:
+                where: "metro_key is null"
 
   - name: mart_paid_performance
     description: >
