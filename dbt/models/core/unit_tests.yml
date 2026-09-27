@@ -72,6 +72,8 @@ unit_tests:
         rows:
           - {event_key: "eeeeeeee-0000-0000-0000-000000000001", title: "Bronco event", event_date: "2026-08-01", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: 20, ticket_price: 70, status: Published}
           - {event_key: "eeeeeeee-0000-0000-0000-000000000002", title: "Imported event", event_date: "2025-03-01", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: null, ticket_price: null, wordpress_source_id: "500", status: Published}
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000003", title: "Zero price import", event_date: "2024-01-10", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: null, ticket_price: 0, wordpress_source_id: "800", status: Published}
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000004", title: "Free event", event_date: "2026-08-15", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: 10, ticket_price: 0, status: Published}
       - input: ref('stg_cms__tickets')
         rows:
           - {ticket_key: k1, event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Paid}
@@ -87,12 +89,14 @@ unit_tests:
         rows:
           - {woo_event_id: "500", title: "Imported event (archive)", event_date: "2025-03-01", start_at: "2025-03-01 23:00:00", woo_venue_id: "9", woo_organizer_id: "7", event_cost: 60}
           - {woo_event_id: "600", title: "Legacy only", status: publish, event_date: "2024-05-04", start_at: "2024-05-04 22:00:00", woo_venue_id: "9", woo_organizer_id: "7", event_cost: 55}
+          - {woo_event_id: "800", title: "Zero price import (archive)", event_date: "2024-01-10", start_at: "2024-01-10 23:00:00", woo_venue_id: "9", woo_organizer_id: "7", event_cost: 45}
       - input: ref('stg_woo__products')
         rows:
           - {woo_product_id: "p1", woo_event_id: "500", product_kind: ticket, ticket_capacity: 16, regular_price: 60, name: "Imported event"}
           - {woo_product_id: "p2", woo_event_id: "600", product_kind: ticket, ticket_capacity: 10, regular_price: 55, name: "Legacy only GA"}
           - {woo_product_id: "p3", woo_event_id: "600", product_kind: ticket, ticket_capacity: 4, regular_price: 75, name: "Legacy only VIP"}
           - {woo_product_id: "p4", woo_event_id: "700", product_kind: ticket, ticket_capacity: 0, regular_price: 40, name: "Old undated workshop"}
+          - {woo_product_id: "p5", woo_event_id: "800", product_kind: ticket, ticket_capacity: 12, regular_price: 45, name: "Zero price import"}
       - input: ref('stg_woo__orders')
         rows:
           - {order_key: "woo-1", status: completed}
@@ -105,13 +109,23 @@ unit_tests:
     expect:
       # Note: dbt's unit-test compiler derives the comparison column set from the FIRST expected
       # row's keys, then unions all rows positionally -- rows with different key sets both fail to
-      # compile and would silently skip comparing columns absent from row 1. All four rows below
+      # compile and would silently skip comparing columns absent from row 1. All six rows below
       # therefore carry the same 14 keys, in the same order, with the true computed value (title,
       # venue_key, instructor_key, wordpress_source_id, metro_key are null where the underlying data
       # gives no value) rather than the brief's originally sparser per-row column sets.
+      #
+      # Fix round 1: rows 3 and 4 cover the CMS ticket_price=0 fallback. Row 3 (wordpress_source_id
+      # "800", a new archive event/product not reused from 600/700 so the existing 600/700 expected
+      # rows are unaffected) has ticket_price: 0 and an archive price of 45 (no order line item on
+      # event 800, so the archive price is woo_products.regular_price = event_cost = 45, not a
+      # seat-weighted average) -- expected ticket_price is the archive's 45, not 0. Row 4 has
+      # ticket_price: 0 and no wordpress_source_id at all -- expected ticket_price stays 0 (a
+      # genuinely free event has no archive row to borrow from).
       rows:
         - {event_key: "eeeeeeee-0000-0000-0000-000000000001", event_source: cms, platform_era: bronco, title: "Bronco event", capacity: 20, capacity_source: cms, ticket_price: 70, seats_sold: 1, seats_available: 19, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: null, has_event_date: true}
         - {event_key: "eeeeeeee-0000-0000-0000-000000000002", event_source: cms, platform_era: legacy_event_tickets, title: "Imported event", capacity: 16, capacity_source: woo_products, ticket_price: 60, seats_sold: 2, seats_available: 14, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: "500", has_event_date: true}
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000003", event_source: cms, platform_era: legacy_event_tickets, title: "Zero price import", capacity: 12, capacity_source: woo_products, ticket_price: 45, seats_sold: 0, seats_available: 12, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: "800", has_event_date: true}
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000004", event_source: cms, platform_era: bronco, title: "Free event", capacity: 10, capacity_source: cms, ticket_price: 0, seats_sold: 0, seats_available: 10, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: null, has_event_date: true}
         - {event_key: "woo-ev-600", event_source: woo_archive, platform_era: legacy_event_tickets, title: "Legacy only", capacity: 14, capacity_source: woo_products, ticket_price: 50, seats_sold: 3, seats_available: 11, venue_key: "woo-venue-9", metro_key: m2, instructor_key: "woo-org-7", wordpress_source_id: "600", has_event_date: true}
         - {event_key: "woo-ev-700", event_source: woo_archive, platform_era: legacy_event_tickets, title: "Old undated workshop", capacity: null, capacity_source: none, ticket_price: 40, seats_sold: 0, seats_available: null, venue_key: null, metro_key: null, instructor_key: null, wordpress_source_id: "700", has_event_date: false}
 

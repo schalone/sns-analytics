@@ -3,13 +3,15 @@
 -- archive is built from its ticket products and keyed woo-ev-<id>. seats_sold here is a plain count
 -- for convenience; core_event_economics (built from bookings) is the authoritative outcome table.
 --
--- Task 5: legacy-only events, capacity/price fallback. A CMS event keeps its own capacity and
--- ticket_price when set; when the CMS value is null or zero it borrows the archive's ticket-product
--- capacity/price (matched on wordpress_source_id), and its seats_sold adds the archive's own
--- ticket-line seats on top of its CMS ticket count. An event the CMS never imported is built
--- entirely from the archive and keyed woo-ev-<id>; its venue/instructor are resolved through the
--- legacy id on core_venues/core_instructors, which already carry the equivalent woo-venue-<id> /
--- woo-org-<id> rows for anything the CMS didn't import either.
+-- Task 5: legacy-only events, capacity/price fallback. A CMS event keeps its own capacity, falling
+-- back to the archive's ticket-product capacity (matched on wordpress_source_id) when the CMS value
+-- is null or zero. Its ticket_price falls back the same way when null, or when zero and the archive
+-- has a price for that event; a CMS price of exactly 0 with no archive price stays 0 (a genuinely
+-- free event, not an unset one). Its seats_sold adds the archive's own ticket-line seats on top of
+-- its CMS ticket count. An event the CMS never imported is built entirely from the archive and keyed
+-- woo-ev-<id>; its venue/instructor are resolved through the legacy id on
+-- core_venues/core_instructors, which already carry the equivalent woo-venue-<id> / woo-org-<id>
+-- rows for anything the CMS didn't import either.
 with woo_products as (
   select woo_event_id, nullif(sum(ticket_capacity), 0) as capacity, max(regular_price) as regular_price, min(name) as product_name
   from {{ ref('stg_woo__products') }}
@@ -71,7 +73,7 @@ cms_rows as (
     coalesce(e.time_zone, 'America/New_York') as time_zone,
     e.venue_key, coalesce(e.metro_key, v.metro_key) as metro_key, e.instructor_key, e.category, e.event_type, e.theme, e.status,
     coalesce(nullif(e.capacity, 0), w.capacity) as capacity,
-    coalesce(e.ticket_price, w.ticket_price) as ticket_price,
+    coalesce(nullif(e.ticket_price, 0), w.ticket_price, e.ticket_price) as ticket_price,
     e.is_virtual, e.no_tickets, e.external_ticket_url, e.wordpress_source_id, e.updated_at,
     coalesce(s.seats_sold, 0) + coalesce(w.seats, 0) as seats_sold,
     'cms' as event_source,
@@ -104,12 +106,11 @@ unioned as (
 select u.*,
   greatest(u.capacity - u.seats_sold, 0) as seats_available,
   u.event_date is not null as has_event_date,
-  -- Task 5: an undated legacy-only event (~1,968 of them, checked 2026-09-27 -- mostly ticket
+  -- Task 5: an undated legacy-only event (~1,968 of them, checked 2026-09-27 -- 1,966 ticket
   -- products whose tribe_wooticket_for_event id has no matching row in stg_woo__events at all,
-  -- plus a couple of pre-2020 events the events table never carried a date for) is
-  -- legacy_event_tickets regardless of date; every other row -- CMS or archive, dated -- goes by
-  -- its event_date against the launch boundary. A CMS row with a null event_date falls to bronco
-  -- through the macro's else branch.
+  -- plus 2 ticket products whose archive event row has no date) is legacy_event_tickets regardless
+  -- of date; every other row -- CMS or archive, dated -- goes by its event_date against the launch
+  -- boundary. A CMS row with a null event_date falls to bronco through the macro's else branch.
   case when u.event_date is null and u.event_source = 'woo_archive' then 'legacy_event_tickets'
        else {{ platform_era_of_date('u.event_date') }} end as platform_era
 from unioned u
