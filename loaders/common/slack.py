@@ -14,7 +14,14 @@ def post_status(settings: Settings, text: str) -> None:
         print(f"slack post failed: {r.text[:200]}")
 
 
-def compose_run_status(mode: str, rc: int, drc: int, run_id: str, summary: str) -> str:
+def compose_run_status(mode: str, rc: int, drc: int, run_id: str, summary: str, dbt_line: str | None = None) -> str:
     status = "OK" if rc == 0 and drc == 0 else "PROBLEMS"
     text = f"sns-analytics {mode} {status} — loaders rc={rc}, dbt rc={drc}, run {run_id}"
+    if dbt_line:
+        text += f"\n{dbt_line}"
     return text + (f"\n{summary}" if summary else "")
+
+
+def should_post(mode: str, rc: int, drc: int) -> bool:
+    """Hourly runs post only problems (24 OK lines a day would bury the ones that matter); daily always posts."""
+    return not (mode == "hourly" and rc == 0 and drc == 0)

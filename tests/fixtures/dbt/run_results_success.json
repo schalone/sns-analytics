@@ -1,0 +1,8 @@
+{"metadata": {"dbt_version": "1.12.5"}, "elapsed_time": 12.3, "results": [
+  {"unique_id": "model.sns_analytics.core_orders", "status": "success"},
+  {"unique_id": "model.sns_analytics.mart_daily_kpis", "status": "success"},
+  {"unique_id": "seed.sns_analytics.date_flags", "status": "success"},
+  {"unique_id": "test.sns_analytics.unique_core_orders_order_key.1a2b3c4d5e", "status": "pass"},
+  {"unique_id": "unit_test.sns_analytics.mart_daily_kpis.cvr_counts_every_metro", "status": "pass"},
+  {"unique_id": "test.sns_analytics.assert_webapp_orders_present", "status": "warn"}
+]}

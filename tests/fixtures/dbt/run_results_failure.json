@@ -1,0 +1,7 @@
+{"metadata": {"dbt_version": "1.12.5"}, "elapsed_time": 9.1, "results": [
+  {"unique_id": "model.sns_analytics.stg_cms__orders", "status": "success"},
+  {"unique_id": "test.sns_analytics.accepted_values_stg_cms__orders_status__Paid.0f9e8d7c6b", "status": "fail"},
+  {"unique_id": "model.sns_analytics.core_orders", "status": "skipped"},
+  {"unique_id": "model.sns_analytics.core_ad_spend", "status": "error"},
+  {"unique_id": "test.sns_analytics.not_null_core_orders_order_key.aaaaaaaaaa", "status": "skipped"}
+]}
