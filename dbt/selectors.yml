@@ -1,0 +1,18 @@
+selectors:
+  - name: hourly
+    description: >
+      The hourly Cloud Run job's build (final-review I5/I16): every model tagged `hourly` (the CMS-derived core
+      models and the hourly marts) WITH their ancestors, so the staging views and their tests run too, but never
+      a `ga4`-tagged model (core_sessions, core_session_orders: the GA4 daily export lands once a day, so they
+      build in the daily run only; mart_daily_kpis reads the existing core_sessions table) and never the GA4
+      source itself.
+    definition:
+      union:
+        - method: tag
+          value: hourly
+          parents: true
+        - exclude:
+            - method: tag
+              value: ga4
+            - method: source
+              value: ga4

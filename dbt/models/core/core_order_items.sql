@@ -1,3 +1,4 @@
+{{ config(tags=['hourly']) }}
 -- Ruling 2: legacy WooCommerce line items map to events through the product's
 -- `tribe_wooticket_for_event` postmeta (exposed as `stg_woo__products.woo_event_id`), not through
 -- the raw `woo._staging_products` source the brief joined directly. `_staging_products` is not
