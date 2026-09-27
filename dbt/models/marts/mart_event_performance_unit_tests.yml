@@ -1,0 +1,58 @@
+version: 2
+
+unit_tests:
+  - name: event_performance_peer_benchmarks
+    description: >
+      Peers are events in the same metro, category and weekday class in the peer_window_days before.
+      Fewer than peer_min_count peers gives no benchmark. An event with no metro or no event_date has
+      no peers and is nobody's peer.
+    model: mart_event_performance
+    given:
+      - input: ref('core_event_economics')
+        rows:
+          - {event_key: P1, event_date: "2026-08-01", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.5, days_before_at_50pct: 2, sns_share_per_available_seat: 10, contribution_per_available_seat: 8}
+          - {event_key: P2, event_date: "2026-08-08", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.6, days_before_at_50pct: 4, sns_share_per_available_seat: 12, contribution_per_available_seat: 9}
+          - {event_key: P3, event_date: "2026-08-15", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.7, days_before_at_50pct: 6, sns_share_per_available_seat: 14, contribution_per_available_seat: 10}
+          - {event_key: P4, event_date: "2026-08-22", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.8, days_before_at_50pct: 8, sns_share_per_available_seat: 16, contribution_per_available_seat: null}
+          - {event_key: P5, event_date: "2026-09-05", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.9, days_before_at_50pct: null, sns_share_per_available_seat: 18, contribution_per_available_seat: 12}
+          - {event_key: T1, event_date: "2026-09-12", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 1.0, days_before_at_50pct: 12, sns_share_per_available_seat: 24, contribution_per_available_seat: 22}
+          - {event_key: W1, event_date: "2026-09-09", metro_key: m1, category: calligraphy, is_weekend: false, utilisation: 0.2, days_before_at_50pct: null, sns_share_per_available_seat: 4, contribution_per_available_seat: 3}
+          - {event_key: O1, event_date: "2026-09-06", metro_key: m2, category: calligraphy, is_weekend: true, utilisation: 0.1, days_before_at_50pct: null, sns_share_per_available_seat: 2, contribution_per_available_seat: 1}
+          - {event_key: OLD, event_date: "2025-09-05", metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.1, days_before_at_50pct: 1, sns_share_per_available_seat: 1, contribution_per_available_seat: 1}
+          - {event_key: NM1, event_date: "2026-08-20", metro_key: null, category: calligraphy, is_weekend: true, utilisation: 0.5, days_before_at_50pct: 2, sns_share_per_available_seat: 10, contribution_per_available_seat: 8}
+          - {event_key: ND1, event_date: null, metro_key: m1, category: calligraphy, is_weekend: true, utilisation: 0.5, days_before_at_50pct: 2, sns_share_per_available_seat: 10, contribution_per_available_seat: 8}
+    expect:
+      # dbt's unit-test compiler derives the comparison column set from the FIRST expected row and
+      # every row must supply it, so all rows below carry the same 9 keys. Only peer_count,
+      # peer_median_utilisation and utilisation_vs_peers are stated for OLD/P1-P4/W1/O1/NM1/ND1 (all
+      # have fewer than peer_min_count peers, or none); the other four columns are null for the same
+      # reason and are filled in rather than left out. P5 and T1 clear the peer_min_count threshold, so
+      # their four extra columns are computed by hand from the peer set's own values (shown in the
+      # comment below each), not changed from what either was already given.
+      rows:
+        # OLD is 372 days before T1 (outside the 365-day window) and has no peers of its own within
+        # the window before 2025-09-05.
+        - {event_key: OLD, peer_count: 0, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        - {event_key: P1, peer_count: 1, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        - {event_key: P2, peer_count: 2, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        - {event_key: P3, peer_count: 3, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        - {event_key: P4, peer_count: 4, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        # P5's peers are P1-P4 and OLD (exactly 365 days earlier, inside the window): 5 peers.
+        # utilisation 0.1,0.5,0.6,0.7,0.8 -> median 0.6. days_before_at_50pct 1,2,4,6,8 -> median 4.
+        # sns_share_per_available_seat 1,10,12,14,16 -> median 12. contribution_per_available_seat
+        # (P4 is null) 1,8,9,10 -> median (8+9)/2 = 8.5. vs_peers: utilisation 0.9-0.6=0.3;
+        # sns_share 18-12=6.0; contribution 12-8.5=3.5.
+        - {event_key: P5, peer_count: 5, peer_median_utilisation: 0.6, peer_median_days_before_at_50pct: 4.0, peer_median_sns_share_per_available_seat: 12.0, peer_median_contribution_per_available_seat: 8.5, utilisation_vs_peers: 0.3, sns_share_per_seat_vs_peers: 6.0, contribution_per_seat_vs_peers: 3.5}
+        # T1's peers are P1-P5: utilisation median 0.7; days_before_at_50pct (P5 is null) 2,4,6,8 ->
+        # median 5.0; sns_share_per_available_seat median 14.0; contribution_per_available_seat (P4 is
+        # null) 8,9,10,12 -> median 9.5. vs_peers: utilisation 1.0-0.7=0.3; sns_share 24-14=10.0;
+        # contribution 22-9.5=12.5.
+        - {event_key: T1, peer_count: 5, peer_median_utilisation: 0.7, peer_median_days_before_at_50pct: 5.0, peer_median_sns_share_per_available_seat: 14.0, peer_median_contribution_per_available_seat: 9.5, utilisation_vs_peers: 0.3, sns_share_per_seat_vs_peers: 10.0, contribution_per_seat_vs_peers: 12.5}
+        # W1 is the only non-weekend event in m1/calligraphy, so it has no peers.
+        - {event_key: W1, peer_count: 0, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        # O1 is in metro m2, alone, so it has no peers.
+        - {event_key: O1, peer_count: 0, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        # NM1 has no metro: it matches nothing (NULL never equals NULL in the join) and has no peers.
+        - {event_key: NM1, peer_count: 0, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}
+        # ND1 has no event_date: its own peer window is undefined and it matches nothing either way.
+        - {event_key: ND1, peer_count: 0, peer_median_utilisation: null, peer_median_days_before_at_50pct: null, peer_median_sns_share_per_available_seat: null, peer_median_contribution_per_available_seat: null, utilisation_vs_peers: null, sns_share_per_seat_vs_peers: null, contribution_per_seat_vs_peers: null}

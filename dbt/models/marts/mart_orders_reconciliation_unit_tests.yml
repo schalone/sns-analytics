@@ -1,0 +1,46 @@
+version: 2
+
+unit_tests:
+  - name: reconciliation_compares_like_with_like
+    description: >
+      Each side is grouped by the date the thing itself happened on: an order by its own business_date,
+      a Stripe transaction by its own business_date, a refund by the refund's own business_date. A bronco
+      order paid on day 1 and refunded in full on day 3 matches its Stripe charge and refund on the same
+      two days. An ad hoc Stripe charge (no CMS order) on day 1 never enters orders_charged_amount. A
+      legacy order and its matched charge on a legacy-era day carry no refund tracking at all
+      (orders_refunded_amount is NULL there). A second bronco day with a real gap between what was
+      charged and what Stripe shows is flagged.
+    model: mart_orders_reconciliation
+    given:
+      - input: ref('core_orders')
+        rows:
+          - {order_key: O1, business_date: "2026-07-01", platform_era: bronco, gross_revenue: 100, net_revenue: 0}
+          - {order_key: O3, business_date: "2026-07-10", platform_era: bronco, gross_revenue: 100, net_revenue: 100}
+          - {order_key: L1, business_date: "2025-01-10", platform_era: legacy_event_tickets, gross_revenue: 50, net_revenue: 50}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, business_date: "2026-07-01", amount: 100, fee: 3.20, net: 96.80, order_key: O1, match_method: checkout_session}
+          - {txn_id: t2, type: refund, source_object: refund, business_date: "2026-07-03", amount: -100, fee: 0, net: -100, order_key: O1, match_method: checkout_session}
+          - {txn_id: t3, type: charge, source_object: charge, business_date: "2026-07-01", amount: 10, fee: 0.30, net: 9.70, order_key: null, match_method: adhoc}
+          - {txn_id: t4, type: charge, source_object: charge, business_date: "2025-01-10", amount: 50, fee: 1.75, net: 48.25, order_key: L1, match_method: woo_metadata}
+          - {txn_id: t5, type: charge, source_object: charge, business_date: "2026-07-10", amount: 90, fee: 2.90, net: 87.10, order_key: O3, match_method: order_number}
+      - input: ref('core_refunds')
+        rows:
+          - {refund_key: R1, order_key: O1, amount: 100, status: Succeeded, business_date: "2026-07-03", platform_era: bronco}
+    expect:
+      rows:
+        # Day 1 (bronco): O1's 100 matches t1's 100 exactly; t3's 10 is ad hoc and excluded from both
+        # sides of the charged-amount comparison, so it shows up only as stripe_adhoc_amount.
+        - {business_date: "2026-07-01", platform_era: bronco, variance_amount: 0, variance_pct: 0.0, flagged: false, stripe_adhoc_amount: 10, orders_refunded_amount: 0, stripe_refunded_amount: 0, refund_variance_amount: 0}
+        # Day 3 (bronco): no order and no charge/payment transaction that day, only the refund of O1;
+        # orders_refunded_amount (from core_refunds, by the refund's own date) matches
+        # stripe_refunded_amount (from core_stripe_transactions, by the transaction's own date)
+        # exactly, so refund_variance_amount is 0. variance_pct is NULL (no Stripe charge that day),
+        # so flagged is false, not NULL.
+        - {business_date: "2026-07-03", platform_era: bronco, variance_amount: 0, variance_pct: null, flagged: false, stripe_adhoc_amount: 0, orders_refunded_amount: 100, stripe_refunded_amount: 100, refund_variance_amount: 0}
+        # The legacy day: L1's 50 matches t4's 50 exactly; orders_refunded_amount is NULL (the archive
+        # carries no refund dates), so refund_variance_amount is NULL too.
+        - {business_date: "2025-01-10", platform_era: legacy_event_tickets, variance_amount: 0, variance_pct: 0.0, flagged: false, stripe_adhoc_amount: 0, orders_refunded_amount: null, stripe_refunded_amount: 0, refund_variance_amount: null}
+        # A second bronco day: O3 charged 100, Stripe only shows 90 -- a real 10/90 = 0.111111... gap,
+        # over the 1% threshold, so this one is flagged.
+        - {business_date: "2026-07-10", platform_era: bronco, variance_amount: 10, variance_pct: 0.111111, flagged: true, stripe_adhoc_amount: 0, orders_refunded_amount: 0, stripe_refunded_amount: 0, refund_variance_amount: 0}

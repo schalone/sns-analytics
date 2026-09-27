@@ -31,12 +31,17 @@ o as (
     coalesce(e.metro_key, o.billing_metro_key) as metro_key,
     count(*) as orders, countif(o.order_type = 'ticket') as ticket_orders, sum(o.seats) as seats,
     sum(o.gross_revenue) as gross_revenue, sum(o.net_revenue) as net_revenue,
-    sum(if(o.order_type = 'ticket', o.net_revenue, 0)) as ticket_net_revenue, countif(o.is_first_order) as new_customers
+    sum(if(o.order_type = 'ticket', o.net_revenue, 0)) as ticket_net_revenue, countif(o.is_first_order) as new_customers,
+    sum(coalesce(bk.net_distributable, 0)) as net_distributable, sum(coalesce(bk.sns_share, 0)) as sns_share
   from {{ ref('core_orders') }} o
   left join {{ ref('core_session_orders') }} so using (order_key)
   left join {{ ref('core_sessions') }} cs using (session_key)
   left join (select order_key, any_value(event_key) as event_key from {{ ref('core_order_items') }} where item_type = 'ticket' group by order_key) oi using (order_key)
   left join {{ ref('core_events') }} e using (event_key)
+  -- Bookings carry no business_date of their own; aggregated to one row per order_key first so this
+  -- join can never fan the order out and change any existing measure above.
+  left join (select order_key, sum(net_distributable) as net_distributable, sum(sns_share) as sns_share
+             from {{ ref('core_bookings') }} group by order_key) bk using (order_key)
   group by 1, 2, 3, 4
 ),
 oc as (
@@ -54,6 +59,7 @@ select g.business_date, g.platform_era, g.channel_group, g.metro_key,
   coalesce(s.sessions, 0) as sessions, coalesce(s.engaged_sessions, 0) as engaged_sessions,
   coalesce(o.orders, 0) as orders, coalesce(o.ticket_orders, 0) as ticket_orders, coalesce(o.seats, 0) as seats,
   coalesce(o.gross_revenue, 0) as gross_revenue, coalesce(o.net_revenue, 0) as net_revenue,
+  coalesce(o.net_distributable, 0) as net_distributable, coalesce(o.sns_share, 0) as sns_share,
   coalesce(o.ticket_net_revenue, 0) as ticket_net_revenue,
   case when g.metro_key is null then coalesce(oc.channel_ticket_orders, 0) end as channel_ticket_orders,
   case when g.metro_key is null and f.flag is null then safe_divide(coalesce(oc.channel_ticket_orders, 0), s.sessions) end as cvr,

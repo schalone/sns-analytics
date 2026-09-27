@@ -34,18 +34,24 @@ social_sessions as (
   from {{ ref('core_sessions') }} where default_channel_group = 'Paid Social' and campaign is not null
 ),
 orders_by_session as (
-  select so.session_key, o.business_date, count(*) as orders, sum(o.seats) as seats, sum(o.net_revenue) as net_revenue
-  from {{ ref('core_session_orders') }} so join {{ ref('core_orders') }} o using (order_key) group by 1, 2
+  -- Bookings carry no session/date of their own; aggregated to one row per order_key first so this
+  -- join can never fan the order out and change the existing orders/seats/net_revenue sums.
+  select so.session_key, o.business_date, count(*) as orders, sum(o.seats) as seats, sum(o.net_revenue) as net_revenue,
+    sum(coalesce(bk.sns_share, 0)) as sns_share
+  from {{ ref('core_session_orders') }} so
+  join {{ ref('core_orders') }} o using (order_key)
+  left join (select order_key, sum(sns_share) as sns_share from {{ ref('core_bookings') }} group by order_key) bk using (order_key)
+  group by 1, 2
 ),
 google_agg as (
-  select gs.session_date as date, 'google' as platform, gs.campaign_id, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue
+  select gs.session_date as date, 'google' as platform, gs.campaign_id, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue, sum(coalesce(ob.sns_share, 0)) as sns_share
   from google_sessions gs left join orders_by_session ob using (session_key) group by 1, 2, 3
 ),
 social_agg as (
   -- Fix round 1, finding 5: grouped and joined on the normalised (lower/trim) campaign name so
   -- the grain stays unique and matches spend rows regardless of case/whitespace differences
   -- between GA4's utm campaign param and the CSV drop's campaign_name.
-  select ss.session_date as date, ss.platform, ss.campaign_name_norm, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue
+  select ss.session_date as date, ss.platform, ss.campaign_name_norm, count(*) as sessions, sum(coalesce(ob.orders, 0)) as orders, sum(coalesce(ob.seats, 0)) as seats, sum(coalesce(ob.net_revenue, 0)) as net_revenue, sum(coalesce(ob.sns_share, 0)) as sns_share
   from social_sessions ss left join orders_by_session ob using (session_key) group by 1, 2, 3
 )
 -- Fix round 2: core_ad_spend is now unique on (date, platform, campaign_name_norm) -- CSV spend is
@@ -56,6 +62,8 @@ social_agg as (
 select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.campaign_name_norm, sp.metro_key, sp.spend, sp.impressions, sp.clicks,
   coalesce(g.sessions, so.sessions, 0) as sessions, coalesce(g.orders, so.orders, 0) as orders, coalesce(g.seats, so.seats, 0) as seats,
   coalesce(g.net_revenue, so.net_revenue, 0) as net_revenue,
+  coalesce(g.sns_share, so.sns_share, 0) as sns_share,
+  coalesce(g.sns_share, so.sns_share, 0) - sp.spend as sns_contribution,
   safe_divide(coalesce(g.net_revenue, so.net_revenue, 0), nullif(sp.spend, 0)) as roas,
   safe_divide(sp.spend, nullif(coalesce(g.orders, so.orders, 0), 0)) as cpa,
   {{ platform_era_of_date('sp.date') }} as platform_era

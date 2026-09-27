@@ -31,8 +31,14 @@ unit_tests:
       - input: ref('date_flags')
         format: sql
         rows: select cast(null as date) as date, cast(null as string) as flag from unnest([1]) where false
+      - input: ref('core_bookings')
+        rows:
+          - {booking_key: bk1, order_key: o2, net_distributable: 54, sns_share: 21.6}
     expect:
+      # net_distributable/sns_share come from core_bookings aggregated by order_key, so they sit on
+      # whichever row that order's own metro lands on -- here o2's booking lands on the m-dallas row,
+      # the other two rows have no booking and stay 0.
       rows:
-        - {metro_key: null, sessions: 2, orders: 1, ticket_orders: 1, channel_ticket_orders: 3, cvr: 1.5}
-        - {metro_key: m-boston, sessions: 0, orders: 1, ticket_orders: 1, channel_ticket_orders: null, cvr: null}
-        - {metro_key: m-dallas, sessions: 0, orders: 1, ticket_orders: 1, channel_ticket_orders: null, cvr: null}
+        - {metro_key: null, sessions: 2, orders: 1, ticket_orders: 1, channel_ticket_orders: 3, cvr: 1.5, net_distributable: 0, sns_share: 0}
+        - {metro_key: m-boston, sessions: 0, orders: 1, ticket_orders: 1, channel_ticket_orders: null, cvr: null, net_distributable: 0, sns_share: 0}
+        - {metro_key: m-dallas, sessions: 0, orders: 1, ticket_orders: 1, channel_ticket_orders: null, cvr: null, net_distributable: 54, sns_share: 21.6}
