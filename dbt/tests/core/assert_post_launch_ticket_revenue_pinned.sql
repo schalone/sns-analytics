@@ -1,3 +1,7 @@
+-- Final-review I17c: warn, not error, until the pinned figure is confirmed against the warehouse after the
+-- first CMS backfill; raise to error (delete this config line) once confirmed. The pinned $474.1k is GROSS
+-- ticket revenue (the amount charged for ticket orders, before refunds), hence gross_revenue below.
+{{ config(severity='warn') }}
 -- Ruling 1: unlike the order-count pinned test, this one needs no extra empty-state guard: with
 -- zero matching webapp ticket orders, sum(gross_revenue) over an empty set is NULL, and
 -- `NULL not between ...` evaluates to NULL/unknown, which the outer WHERE filters out -- so this

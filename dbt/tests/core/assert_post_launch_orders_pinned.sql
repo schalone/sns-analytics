@@ -1,3 +1,6 @@
+-- Final-review I17c: warn, not error, until the pinned figure is confirmed against the warehouse after the
+-- first CMS backfill; raise to error (delete this config line) once confirmed.
+{{ config(severity='warn') }}
 -- Ruling 1: with raw_cms empty, there are zero webapp orders in this window today. This must
 -- return no rows in that state (only a real deficit/excess of webapp order volume once the CMS
 -- loader runs should fail it), so the `c > 0` guard is required in addition to the brief's range
