@@ -1,4 +1,4 @@
--- Task 14b: the CMS export API never exports refund reasons (it is admin free text) -- `reason`
+-- The CMS export API never exports refund reasons (it is admin free text) -- `reason`
 -- is kept here (column stays for shape/forward-compat) but will always read as NULL.
 with latest as ({{ latest_raw('raw_cms', 'refunds') }})
 select key as refund_key, json_value(payload, '$.orderKey') as order_key, json_value(payload, '$.ticketKey') as ticket_key,

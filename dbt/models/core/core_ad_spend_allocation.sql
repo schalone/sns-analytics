@@ -15,6 +15,8 @@ sales as (
   join {{ ref('core_events') }} e using (event_key)
   where e.has_event_date
   group by 1, 2, 3
+  -- An event absorbs spend only on a day its net seats sold are above zero; a day of only
+  -- cancelled bookings absorbs none.
   having sum(b.net_seats) > 0
 ),
 metro_split as (

@@ -1,4 +1,4 @@
--- Task 14b: `startDate` is exported as a `yyyy-MM-dd` string (a calendar date, not an instant);
+-- `startDate` is exported as a `yyyy-MM-dd` string (a calendar date, not an instant);
 -- `start_date` is now a DATE, not a TIMESTAMP.
 with latest as ({{ latest_raw('raw_cms', 'instructors') }})
 select key as instructor_key, json_value(payload, '$.name') as name, json_value(payload, '$.urlPath') as url_path, json_value(payload, '$.city') as city,

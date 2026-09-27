@@ -1,4 +1,4 @@
--- Task 14b: `state` added to the metros export contract.
+-- `state` added to the metros export contract.
 with latest as ({{ latest_raw('raw_cms', 'metros') }})
 select key as metro_key, json_value(payload, '$.name') as name, json_value(payload, '$.slug') as slug, json_value(payload, '$.urlPath') as url_path,
   json_value(payload, '$.state') as state,

@@ -197,7 +197,7 @@ unit_tests:
         - {order_item_key: F1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-11", seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 50, processing_fee: 1.75, fee_source: actual, net_distributable: -1.75, sns_share: -0.7, instructor_share: -1.05, is_cancelled: false}
 
   - name: order_item_economics_zero_value_order
-    description: Review focus 2. A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
+    description: A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
     model: core_order_item_economics
     given:
       - input: ref('stg_cms__orders')
@@ -380,7 +380,10 @@ unit_tests:
       Metro spend is divided among that metro's events by seats sold that day. Spend with no metro is divided
       among all events. Spend nobody can absorb stays unallocated. E4 has no metro, so it can absorb only the
       national (no-metro) google spend, never the m1 meta spend, even though it sold seats on the same day:
-      recomputed by hand below since adding E4's seat brings the national split's denominator from 4 to 5.
+      recomputed by hand below since adding E4's seat brings the national split's denominator from 4 to 5. E5
+      is in metro m2 (the same metro as the 09-02 spend) but its only booking that day has net_seats 0 (a
+      cancelled booking), so it still cannot absorb any of that day's spend, which stays unallocated exactly
+      as it did before E5 was added.
     model: core_ad_spend_allocation
     given:
       - input: ref('core_ad_spend')
@@ -397,12 +400,14 @@ unit_tests:
           - {booking_key: b4, event_key: E1, sale_date: "2026-09-01", net_seats: 0}
           - {booking_key: b5, event_key: null, sale_date: "2026-09-01", net_seats: 5}
           - {booking_key: b6, event_key: E4, sale_date: "2026-09-01", net_seats: 1}
+          - {booking_key: b7, event_key: E5, sale_date: "2026-09-02", net_seats: 0}
       - input: ref('core_events')
         rows:
           - {event_key: E1, metro_key: m1, has_event_date: true}
           - {event_key: E2, metro_key: m1, has_event_date: true}
           - {event_key: E3, metro_key: m2, has_event_date: true}
           - {event_key: E4, metro_key: null, has_event_date: true}
+          - {event_key: E5, metro_key: m2, has_event_date: true}
     expect:
       # 2026-09-01 m1 meta spend (60+30=90) splits only across m1 events by seats: E1=2, E2=1, total 3.
       # E1 = 90 * 2/3 = 60. E2 = 90 * 1/3 = 30. E4 has no metro so it is not part of this split.
@@ -410,6 +415,9 @@ unit_tests:
       # regardless of metro: E1=2, E2=1, E3=1, E4=1, total 5 (was 4 before E4's seat was added).
       # E1 = 40 * 2/5 = 16. E2 = 40 * 1/5 = 8. E3 = 40 * 1/5 = 8. E4 = 40 * 1/5 = 8.
       # Day totals still conserve: m1 (90) + national (40) = 130 = 60+30+16+8+8+8.
+      # 2026-09-02 m2 meta spend (25): E5 is in m2 but sold 0 net seats that day (b7 is cancelled), so
+      # the sales CTE's having sum(net_seats) > 0 excludes it; no event absorbs the spend, unchanged
+      # from before E5 was added.
       rows:
         - {date: "2026-09-01", platform: meta, metro_key: m1, event_key: E1, spend: 60}
         - {date: "2026-09-01", platform: meta, metro_key: m1, event_key: E2, spend: 30}
@@ -448,7 +456,7 @@ unit_tests:
         - {event_key: E1, snapshot_date: "2026-09-10", days_until_event: 0, seats_sold_that_day: 0, cumulative_seats: 10, remaining_capacity: 0, pct_sold: 1.0, cumulative_realized_revenue: 630, cumulative_sns_share: 243.2, ad_spend_that_day: 0, cumulative_ad_spend: 15, has_spend_data_that_day: false}
 
   - name: event_daily_no_capacity
-    description: Review focus 3. With no capacity there is no percentage sold and no remaining capacity; seats still accumulate.
+    description: With no capacity there is no percentage sold and no remaining capacity; seats still accumulate.
     model: core_event_daily
     overrides:
       vars: {curve_days: 1}
@@ -469,7 +477,7 @@ unit_tests:
         - {event_key: E1, snapshot_date: "2024-05-04", days_until_event: 0, cumulative_seats: 3, remaining_capacity: null, pct_sold: null}
 
   - name: event_daily_late_sale_clamped
-    description: Review focus 4. core_bookings already moved a late sale to the event date, so the last row carries every seat. An oversold event caps pct_sold at 1.
+    description: core_bookings already moved a late sale to the event date, so the last row carries every seat. An oversold event caps pct_sold at 1.
     model: core_event_daily
     overrides:
       vars: {curve_days: 1}

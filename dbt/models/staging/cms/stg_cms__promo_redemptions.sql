@@ -1,4 +1,4 @@
--- Task 14b: the CMS export API's final review renamed this field to `orderDiscountCents` (it is
+-- The CMS export API's final review renamed this field to `orderDiscountCents` (it is
 -- the order's total discount, not a per-redemption amount) and the old `discountCents` spelling is
 -- never exported. Exposed as `order_discount`; the old `discount` column is removed (grepped
 -- `dbt/` -- nothing downstream referenced `stg_cms__promo_redemptions.discount`).

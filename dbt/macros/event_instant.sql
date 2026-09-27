@@ -6,7 +6,7 @@
   string with no default applied) propagates safely to a NULL result here rather than erroring or
   being silently masked.
 
-  Task 14b fix round 1: `TIMESTAMP(datetime, zone)` raises "Invalid time zone" for a non-NULL but
+  `TIMESTAMP(datetime, zone)` raises "Invalid time zone" for a non-NULL but
   unrecognised zone string, which would fail the whole core_events build the first time a real CMS
   event carries a bad zone. `SAFE.TIMESTAMP` catches that -- and a NULL zone, which simply
   propagates to NULL rather than erroring -- and returns NULL instead, so the outer `coalesce`

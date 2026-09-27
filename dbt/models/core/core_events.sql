@@ -3,7 +3,7 @@
 -- archive is built from its ticket products and keyed woo-ev-<id>. seats_sold here is a plain count
 -- for convenience; core_event_economics (built from bookings) is the authoritative outcome table.
 --
--- Task 5: legacy-only events, capacity/price fallback. A CMS event keeps its own capacity, falling
+-- Legacy-only events, capacity/price fallback. A CMS event keeps its own capacity, falling
 -- back to the archive's ticket-product capacity (matched on wordpress_source_id) when the CMS value
 -- is null or zero. Its ticket_price falls back the same way when null, or when zero and the archive
 -- has a price for that event; a CMS price of exactly 0 with no archive price stays 0 (a genuinely
@@ -54,7 +54,7 @@ sold as (
   -- One ticket = one seat (the export emits one row per ticket).
   select event_key, countif(status in ('Active', 'Paid', 'Used')) as seats_sold from {{ ref('stg_cms__tickets') }} group by event_key
 ),
--- Task 14b: prefer the export's own start_at_utc/end_at_utc (the same instants, already in UTC)
+-- Prefer the export's own start_at_utc/end_at_utc (the same instants, already in UTC)
 -- when present, falling back to the event_date + venue-local start/end_time + time_zone
 -- construction otherwise. safe.parse_time (not parse_time) so a malformed time string yields NULL
 -- (defaulted to midnight below) in the fallback rather than failing the whole build. Do not assume
@@ -106,7 +106,7 @@ unioned as (
 select u.*,
   greatest(u.capacity - u.seats_sold, 0) as seats_available,
   u.event_date is not null as has_event_date,
-  -- Task 5: an undated legacy-only event (~1,968 of them, checked 2026-09-27 -- 1,966 ticket
+  -- An undated legacy-only event (~1,968 of them, checked 2026-09-27 -- 1,966 ticket
   -- products whose tribe_wooticket_for_event id has no matching row in stg_woo__events at all,
   -- plus 2 ticket products whose archive event row has no date) is legacy_event_tickets regardless
   -- of date; every other row -- CMS or archive, dated -- goes by its event_date against the launch

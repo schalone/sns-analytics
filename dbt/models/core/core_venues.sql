@@ -1,5 +1,5 @@
 {{ config(tags=['hourly']) }}
--- Task 5: legacy-only venues. A venue that exists only in the WooCommerce archive (the CMS never
+-- Legacy-only venues. A venue that exists only in the WooCommerce archive (the CMS never
 -- imported it) is keyed woo-venue-<id>; one the CMS did import is excluded here to avoid a duplicate.
 with cms as (
   select venue_key, name, city, state, zip, latitude, longitude, metro_key as assigned_metro_key, capacity, time_zone,

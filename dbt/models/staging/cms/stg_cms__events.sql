@@ -1,4 +1,4 @@
--- Task 14b: the CMS export API's final review changed event time semantics. `eventDate` is now a
+-- The CMS export API's final review changed event time semantics. `eventDate` is now a
 -- `yyyy-MM-dd` venue-local calendar date string (not a timestamp); `startTime`/`endTime` are
 -- `HH:mm:ss` venue-local strings (unchanged shape, but now explicitly venue-local rather than
 -- ambiguous); and two new nullable fields, `startAtUtc`/`endAtUtc` (ISO-8601 UTC), give the same

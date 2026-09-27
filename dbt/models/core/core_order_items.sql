@@ -4,7 +4,7 @@
 -- the raw `woo._staging_products` source the brief joined directly. `_staging_products` is not
 -- used by this model.
 --
--- Task 5: two core_events rows can in principle share a wordpress_source_id (two CMS events
+-- Two core_events rows can in principle share a wordpress_source_id (two CMS events
 -- imported from the same WordPress event), which would double a legacy line item if joined to
 -- core_events directly. event_by_legacy_id keeps one event per wordpress_source_id -- preferring a
 -- CMS event over an archive one, then the lowest event_key -- so the legacy branch below resolves
