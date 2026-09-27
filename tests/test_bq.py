@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+from decimal import Decimal
 
 import pytest
 from google.api_core import exceptions
@@ -51,6 +52,37 @@ def test_append_payload_datetime_and_nested_dict_become_json_native():
     # The whole row list must be plain-JSON-dumpable without `default=` -- proves nothing non-native
     # (e.g. a datetime) leaked through into the value handed to the BigQuery client.
     json.dumps(rows)
+
+
+def test_append_payload_non_finite_floats_become_null():
+    c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
+    payload = {
+        "nan": float("nan"), "inf": float("inf"), "neg_inf": float("-inf"),
+        "list": [float("nan"), 1, float("inf")],
+        "nested": {"bad": float("-inf"), "ok": 2.5},
+    }
+    w.append("raw_cms", "orders", [RawRow("k1", dt.datetime(2026, 9, 26, tzinfo=UTC), payload)])
+    _dest, rows = c.loads[0]
+    stored = rows[0]["payload"]
+    # json.dumps(..., default=str) does not route non-finite floats through `default` -- it emits
+    # the bare tokens NaN/Infinity/-Infinity, which are not valid JSON and would make BigQuery
+    # reject the whole batch over one bad field. They must come out the other side as JSON null.
+    assert stored["nan"] is None and stored["inf"] is None and stored["neg_inf"] is None
+    assert stored["list"] == [None, 1, None]
+    assert stored["nested"] == {"bad": None, "ok": 2.5}
+    # The whole row list must be valid, finite JSON -- allow_nan=False mirrors what BigQuery's own
+    # JSON parser requires, so this proves a single bad numeric field can no longer poison the batch.
+    json.dumps(rows, allow_nan=False)
+
+
+def test_append_payload_decimal_and_date_become_strings():
+    c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
+    payload = {"amount": Decimal("12.50"), "day": dt.date(2026, 9, 27)}
+    w.append("raw_cms", "orders", [RawRow("k1", dt.datetime(2026, 9, 26, tzinfo=UTC), payload)])
+    _dest, rows = c.loads[0]
+    stored = rows[0]["payload"]
+    assert stored == {"amount": "12.50", "day": "2026-09-27"}
+    assert isinstance(stored["amount"], str) and isinstance(stored["day"], str)
 
 
 def test_append_empty_is_noop():

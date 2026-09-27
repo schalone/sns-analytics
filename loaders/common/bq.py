@@ -53,16 +53,8 @@ class RawWriter:
             return 0
         self.ensure_table(dataset, entity)
         loaded_at = dt.datetime.now(dt.timezone.utc).isoformat()
-        # `payload` is a JSON-typed BigQuery column. Loading it via load_table_from_json needs the
-        # column's *value* to already be a JSON-native structure (dict/list/scalar) -- if it's given
-        # a pre-serialised string instead, BigQuery stores that string verbatim as a JSON scalar
-        # string (json_type(payload) = 'string'), not as an object, and every json_value(payload,
-        # '$.field') read downstream returns NULL. Round-trip through json.dumps/json.loads once
-        # here (not passed through as-is) so any non-JSON-native value in the source payload
-        # (datetime, Decimal, ...) is coerced to a plain JSON value first via `default=str`; the
-        # result is a plain dict/list/scalar, safe to hand to the BigQuery client as-is.
         payload = [
-            {"key": r.key, "updated_at": _iso(r.updated_at), "payload": json.loads(json.dumps(r.payload, default=str)),
+            {"key": r.key, "updated_at": _iso(r.updated_at), "payload": _json_safe(r.payload),
              "_loaded_at": loaded_at, "_run_id": self.run_id}
             for r in rows
         ]
@@ -76,3 +68,26 @@ def _iso(t: dt.datetime) -> str:
     if t.tzinfo is None:
         t = t.replace(tzinfo=dt.timezone.utc)
     return t.isoformat()
+
+
+def _json_safe(value):
+    """Coerce `value` into a plain JSON-native structure (dict/list/str/int/float/bool/None), safe to
+    hand to `load_table_from_json` for a JSON-typed BigQuery column.
+
+    `payload` is a JSON-typed BigQuery column. Loading it needs the column's *value* to already be a
+    JSON-native structure -- if it's given a pre-serialised string instead, BigQuery stores that
+    string verbatim as a JSON scalar string (`json_type(payload) = 'string'`), not as an object, and
+    every `json_value(payload, '$.field')` read downstream returns NULL.
+
+    Two things are coerced on the way through a `json.dumps`/`json.loads` round trip:
+    - Any value the JSON encoder doesn't otherwise know how to serialise (`datetime`, `Decimal`,
+      ...) becomes its `str()` form, via `json.dumps(..., default=str)`.
+    - Non-finite floats (`float('nan')`, `float('inf')`, `float('-inf')`) become JSON `null`
+      (Python `None`). `json.dumps` does not route these through `default` -- it emits the bare
+      tokens `NaN`/`Infinity`/`-Infinity`, which `json.loads` alone would turn back into non-finite
+      Python floats, and the BigQuery client would then send as invalid JSON, causing BigQuery to
+      reject the *whole* load batch over a single bad numeric field. `parse_constant` intercepts
+      exactly those three tokens during parsing and maps them to `None` instead.
+    """
+    text = json.dumps(value, default=str)
+    return json.loads(text, parse_constant=lambda _name: None)
