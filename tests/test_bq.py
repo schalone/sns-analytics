@@ -75,6 +75,16 @@ def test_append_payload_non_finite_floats_become_null():
     json.dumps(rows, allow_nan=False)
 
 
+def test_append_payload_string_values_that_look_like_constants_are_untouched():
+    """parse_constant only intercepts the bare JSON tokens NaN/Infinity/-Infinity; a quoted string with the
+    same text is an ordinary string and must survive unchanged."""
+    c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
+    payload = {"a": "NaN", "b": "Infinity", "c": "-Infinity", "d": float("nan")}
+    w.append("raw_cms", "orders", [RawRow("k1", dt.datetime(2026, 9, 26, tzinfo=UTC), payload)])
+    _dest, rows = c.loads[0]
+    assert rows[0]["payload"] == {"a": "NaN", "b": "Infinity", "c": "-Infinity", "d": None}
+
+
 def test_append_payload_decimal_and_date_become_strings():
     c = FakeBqClient(); w = RawWriter(c, "sipandscript", "run-1")
     payload = {"amount": Decimal("12.50"), "day": dt.date(2026, 9, 27)}
