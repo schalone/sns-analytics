@@ -76,13 +76,18 @@ whole account history. The economic truth layer plan adds it (by changing the jo
 `cms,stripe,gsc,spend`) once its own full-history Stripe load has completed.
 
 **The hourly selector** (`dbt/selectors.yml`) is every model tagged `hourly` together with all its
-ancestors, minus every model tagged `ga4` and the GA4 source. Hourly models: `core_orders`, `core_tickets`,
-`core_order_items`, `core_refunds`, `core_events`, `core_venues`, `core_metros`, `core_instructors`,
-`mart_daily_kpis`, `mart_orders_reconciliation`, `mart_event_performance`. Their ancestors bring in the CMS and WooCommerce staging
-views, `stg_stripe__balance_transactions`, `core_stripe_transactions` and the `date_flags` seed, and every
-test on them runs too. `core_sessions` and `core_session_orders` are tagged `ga4` and build in the daily
-run only (the GA4 daily table lands once a day); the hourly `mart_daily_kpis` reads the existing
-`core_sessions` table. List the exact nodes with `dbt ls --selector hourly`.
+ancestors, minus every model tagged `ga4` and the GA4 source. Hourly-tagged models: `core_orders`,
+`core_tickets`, `core_order_items`, `core_refunds`, `core_events`, `core_venues`, `core_metros`,
+`core_instructors`, `mart_daily_kpis`, `mart_orders_reconciliation`, `mart_event_performance`. Tagging
+`mart_event_performance` hourly pulls its whole ancestry in too, confirmed with
+`dbt ls --selector hourly --resource-type model` (2026-09-27): `core_customer_identity`,
+`core_stripe_transactions`, `core_order_item_economics`, `core_bookings`, `core_event_daily`,
+`core_event_economics`, `core_ad_spend`, `core_ad_spend_allocation`, `ops_unallocated_ad_spend`, every CMS
+and WooCommerce staging view, `stg_stripe__balance_transactions`, `stg_spend__csv`, and both seeds
+(`date_flags`, `campaign_metro_map`) -- the booking-curve and ad-spend-allocation chain that used to build
+only in the daily run. Every test on them runs too. `core_sessions` and `core_session_orders` are tagged
+`ga4` and build in the daily run only (the GA4 daily table lands once a day); the hourly `mart_daily_kpis`
+reads the existing `core_sessions` table. List the exact nodes with `dbt ls --selector hourly`.
 
 **Status message.** Each run ends with one status step: one Slack line to `#analytics`
 (`sns-analytics <mode> OK|PROBLEMS — loaders rc=…, dbt rc=…, run <id>`), then `dbt N models, M tests`
@@ -241,6 +246,8 @@ A green `dbt build` today shows exactly these warnings; any error, or any other 
 | `assert_webapp_orders_present` | `core_orders` has no `webapp` orders (`raw_cms` empty; CMS export API not deployed) | the first CMS backfill (handoff item 8) |
 | `assert_raw_cms_orders_fresh` | nothing was loaded into `raw_cms.orders` in the last day (an empty table warns) | the CMS loader runs at least daily |
 | `assert_reconciliation_variance_recent` | recent bronco days of `mart_orders_reconciliation` are flagged: Stripe already carries bronco-era charge activity but there are no bronco CMS orders yet, so `orders_charged_amount` is 0 against a real `stripe_charged_amount` | the first CMS backfill lands bronco orders (handoff item 8) |
+| `assert_stripe_charges_carry_a_join_key` | 2016 falls under the 97% join-key threshold: 204 of that year's 242 charges (about 84%) carry no `checkout_session_key`/`order_number`/`woo_order_id`/`order_ref`/`adhoc_charge_key` at all; every year from 2017 on is at or above 99.7% | never on its own -- 2016 is fixed archive data, not a loading gap; would need a manual reconciliation of that year's Stripe export against the archive |
+| `assert_identity_coverage` | six (year, era) buckets, all `legacy_event_tickets`, fall under the 98% resolved-identity bar: 2019 (96.55%), 2020 (97.58%), 2022 (97.35%), 2023 (97.00%), 2024 (95.99%), 2025 (96.88%). The unresolved remainder has no Stripe charge to take a customer hash from (see `core_customer_identity`'s `stripe` priority) | never on its own -- same fixed archive data as above |
 
 Warn-severity tests that pass today but will warn if their condition appears: `assert_core_sessions_fresh`,
 `assert_raw_gsc_fresh`, `assert_search_page_totals_match_property_totals`, the `core_tickets.event_key`
@@ -250,12 +257,21 @@ CMS backfill; then raise them to error by deleting their `config(severity='warn'
 
 ## Cost
 
+**Stale as of the `mart_event_performance` addition:** the hourly figure below was measured before
+`mart_event_performance` was tagged `hourly`. Tagging it pulled `core_ad_spend`,
+`core_ad_spend_allocation`, `core_bookings`, `core_event_daily`, `core_event_economics`,
+`ops_unallocated_ad_spend` and `stg_spend__csv` into the hourly build (see "Running in the jobs" above) --
+models that previously ran only once a day. This has not been re-measured. Do not rely on the
+hourly row of the table, or the $4.75/month total, for budgeting until a real hourly run under the new
+ancestor set has been measured with the query at the end of this section (summed with `sum(total_bytes_billed)`
+over one hourly run's time window, or filtered to the job's service account, rather than listed row by row).
+
 Spec §10 targets a few GB scanned per day and well under $5/month. Measured on 2026-09-27 from dbt's own
 `run_results.json` (`adapter_response.bytes_processed` / `bytes_billed`, summed over every model and test):
 
 | Build | Per run: processed / billed | Runs per day | Per day billed |
 |---|---|---:|---:|
-| Hourly (`--selector hourly`) | 0.45 GiB / 1.0 GiB | 23 | about 23 GiB |
+| Hourly (`--selector hourly`) -- **stale, see note above** | 0.45 GiB / 1.0 GiB | 23 | about 23 GiB |
 | Daily (whole project, incremental GA4 models) | 1.9 GiB / 2.7 GiB | 1 | about 2.7 GiB |
 | **Total** | | | **about 26 GiB/day, about 780 GiB/month** |
 
