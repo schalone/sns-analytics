@@ -1,10 +1,12 @@
 {{ config(tags=['hourly'], partition_by={'field': 'snapshot_date', 'data_type': 'date', 'granularity': 'month'}, cluster_by=['event_key']) }}
 -- The booking curve: one row per event per calendar day, from the earlier of the first sale and
 -- curve_days before the event, up to the event date. Capacity is the final recorded capacity.
+-- cumulative_realized_revenue keeps its name for existing consumers but is net: realized revenue less
+-- refunds and disputed (chargeback) money, summed by sale date.
 with sales as (
   select event_key, sale_date,
     sum(net_seats) as seats,
-    sum(realized_revenue - refunded_amount) as revenue,
+    sum(realized_revenue - refunded_amount - disputed_amount) as revenue,
     sum(sns_share) as sns_share
   from {{ ref('core_bookings') }}
   where event_key is not null

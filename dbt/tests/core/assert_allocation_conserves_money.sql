@@ -3,10 +3,13 @@
 -- grouped by family: a rooted transfer line (transfer_in or transfer_superseded) counts with its root
 -- order (transfer_root_order_key), every other item with its own order. Without transfers a family is
 -- exactly one order.
--- CMS refunds count only when status = 'Succeeded' (per core_orders.sql's own refund-status ruling).
+-- CMS refunds count only when status = 'Succeeded' (per core_orders.sql's own refund-status rule).
+-- A matched Stripe refund total nets refund_failure rows (a failed refund returns the money). Disputed money
+-- (Stripe reporting_category 'dispute' less 'dispute_reversal') is split across the items of every order, in
+-- both eras, and must add back to the order's net disputed total.
 with items as (
   select coalesce(transfer_root_order_key, order_key) as order_key, source_system, sum(discount) as discount,
-    sum(service_fee) as service_fee, sum(refunded_amount) as refunded, sum(processing_fee) as fee,
+    sum(service_fee) as service_fee, sum(refunded_amount) as refunded, sum(disputed_amount) as disputed, sum(processing_fee) as fee,
     sum(realized_revenue) as realized_revenue,
     -- every line of one order shares its fee_source; a superseded transfer line carries 'none'
     if(countif(fee_source = 'actual') > 0, 'actual', any_value(fee_source)) as fee_source
@@ -23,7 +26,8 @@ woo as (
   select order_key, status from {{ ref('stg_woo__orders') }}
 ),
 stripe as (
-  select order_key, sum(fee) as fee, -sum(if(type in ('refund', 'payment_refund'), amount, 0)) as refunded
+  select order_key, sum(fee) as fee, -sum(if(type in ('refund', 'payment_refund', 'refund_failure'), amount, 0)) as refunded,
+    -sum(if(reporting_category in ('dispute', 'dispute_reversal'), amount, 0)) as disputed
   from {{ ref('core_stripe_transactions') }} where order_key is not null group by 1
 )
 select i.order_key, 'discount' as what, i.discount as allocated, c.discount as expected
@@ -37,6 +41,10 @@ from items i join cms c using (order_key) where i.source_system = 'webapp' and a
 union all
 select i.order_key, 'stripe_fee', i.fee, s.fee
 from items i join stripe s using (order_key) where i.fee_source = 'actual' and abs(i.fee - s.fee) > 0.01
+union all
+-- Disputes, both eras: the split disputed money must add back to the order's net disputed total.
+select i.order_key, 'dispute', i.disputed, s.disputed
+from items i join stripe s using (order_key) where abs(i.disputed - s.disputed) > 0.01
 union all
 -- Legacy, matched Stripe refund: the split refund must add back to the Stripe refund total.
 select i.order_key, 'legacy_refund_stripe', i.refunded, s.refunded

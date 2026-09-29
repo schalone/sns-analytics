@@ -270,13 +270,35 @@ models:
         description: On transfer_in and transfer_superseded rows, the original paid order the seat came from; NULL otherwise.
       - name: realized_revenue
         data_tests: [not_null]
+      - name: refunded_amount
+        description: >
+          Refunded money. Legacy orders with a Stripe match: -sum(amount) over Stripe types refund, payment_refund and
+          refund_failure (a failed refund returns the money), split by weight; otherwise, on an order whose status is
+          'refunded', each item's own realized revenue. Bronco: succeeded CMS refunds, split by weight.
+      - name: disputed_amount
+        description: >
+          The order's net disputed (chargeback) money in Stripe -- withdrawals (reporting_category 'dispute') less
+          reversals ('dispute_reversal') -- split across the order's items by the same weight as refunds and moved
+          with a transferred seat like a refund. Normally zero or positive; a net reversal surplus would be negative
+          and is not clamped. The dispute fee is in processing_fee, not here. A chargeback does not cancel a seat.
+        data_tests: [not_null]
+      - name: net_distributable
+        description: realized_revenue - refunded_amount - disputed_amount - processing_fee. sns_share is 0.40 of it, instructor_share 0.60.
       # processing_fee can be negative: Stripe returns fees on some refunds, though none exist in
       # today's data. No dbt_utils.accepted_range min_value:0 test here for that reason; plausibility
       # is instead checked by tests/core/assert_processing_fee_plausible.sql (warn).
 
   - name: core_bookings
-    description: "One row per ticket order item. sns_share is 40% of realized revenue less refunds less Stripe fees. Instructor materials are never subtracted."
+    description: "One row per ticket order item. sns_share is 40% of realized revenue less refunds, less disputed (chargeback) money, less Stripe fees. Instructor materials are never subtracted."
     columns:
+      - name: disputed_amount
+        description: >
+          The order's net disputed (chargeback) money in Stripe -- withdrawals (reporting_category 'dispute') less
+          reversals ('dispute_reversal') -- split across the order's items by the same weight as refunds and moved
+          with a transferred seat like a refund. Normally zero or positive; a net reversal surplus would be negative
+          and is not clamped. The dispute fee is in processing_fee, not here. A chargeback does not cancel a seat.
+      - name: net_distributable
+        description: realized_revenue - refunded_amount - disputed_amount - processing_fee. sns_share is 0.40 of it, instructor_share 0.60.
       - name: booking_kind
         description: >
           purchase: an ordinary line (on a transfer's root, seats and money are what stayed after seats moved
@@ -322,7 +344,7 @@ models:
         data_tests: [not_null]
 
   - name: core_event_daily
-    description: "Booking curve. cumulative_realized_revenue is realized revenue less refunds. Capacity is the final recorded capacity, so pct_sold is capped at 1."
+    description: "Booking curve. Capacity is the final recorded capacity, so pct_sold is capped at 1."
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -339,6 +361,10 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: cumulative_realized_revenue
+        description: >
+          Despite its name, a net figure: cumulative realized revenue LESS refunds and LESS disputed (chargeback)
+          money, by sale date. The name is kept because existing reports read it.
 
   - name: core_search_totals_daily
     description: >
@@ -384,11 +410,17 @@ models:
           - dbt_utils.accepted_range:
               arguments:
                 min_value: 0
+      - name: disputed_amount
+        description: Sum of the event's bookings' disputed (chargeback) money; net_distributable is already net of it.
 
   - name: core_customers
     columns:
       - name: customer_hash
         data_tests: [unique, not_null]
+      - name: lifetime_realized_revenue
+        description: >
+          Despite its name, a net figure: realized revenue LESS refunds and LESS disputed (chargeback) money over the
+          customer's seat-holding bookings. The name is kept because existing reports read it.
       - name: first_era
         data_tests:
           - not_null

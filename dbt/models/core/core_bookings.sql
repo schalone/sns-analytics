@@ -12,7 +12,7 @@ select
   date_diff(e.event_date, i.purchase_date, day) as days_before_event,
   i.seats, if(i.is_cancelled, 0, i.seats) as net_seats,
   i.booking_kind, i.seats_purchased, i.seats_transferred_out, i.transfer_root_order_key,
-  i.list_value, i.discount, i.service_fee, i.realized_revenue, i.refunded_amount, i.processing_fee, i.fee_source,
+  i.list_value, i.discount, i.service_fee, i.realized_revenue, i.refunded_amount, i.disputed_amount, i.processing_fee, i.fee_source,
   i.net_distributable, i.sns_share, i.instructor_share, i.is_cancelled
 from {{ ref('core_order_item_economics') }} i
 left join {{ ref('core_events') }} e using (event_key)

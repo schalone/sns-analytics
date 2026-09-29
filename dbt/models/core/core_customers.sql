@@ -4,6 +4,8 @@
 -- (lifetime_orders, is_repeat, first and second purchase dates, first_era, first order channel). Seats,
 -- events, money and home metro come from the bookings that hold seats: a superseded transfer and a root
 -- line whose every seat moved to a transfer are left out, so the moved seat counts once, at its new event.
+-- lifetime_realized_revenue keeps its name for existing consumers but is net: realized revenue less refunds
+-- and disputed (chargeback) money.
 with o as (
   select order_key, customer_hash, identity_source, created_at, business_date, platform_era
   from {{ ref('core_orders') }}
@@ -37,7 +39,7 @@ booking_stats as (
   select customer_hash,
     count(distinct event_key) as lifetime_events,
     sum(net_seats) as lifetime_seats,
-    sum(realized_revenue - refunded_amount) as lifetime_realized_revenue,
+    sum(realized_revenue - refunded_amount - disputed_amount) as lifetime_realized_revenue,
     sum(sns_share) as lifetime_sns_share
   from seat_bookings
   where customer_hash is not null and identity_source != 'unresolved'

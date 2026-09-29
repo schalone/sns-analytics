@@ -13,7 +13,17 @@
 -- weight, when that total is above zero; otherwise, on an order whose own status is 'refunded', each
 -- item refunds its OWN realized revenue in full, not a weighted share of the order's `total` -- some
 -- refunded legacy orders carry a total of 0, or a total below their own line value, so the order
--- total is not a reliable amount to split across items.
+-- total is not a reliable amount to split across items. The matched Stripe refund total is
+-- -sum(amount) over types refund, payment_refund and refund_failure: a failed refund returns the
+-- money, and its positive amount reduces the total.
+--
+-- Disputes (chargebacks), both eras: an item's disputed_amount is the order's net disputed money in
+-- Stripe, -sum(amount) over reporting_category 'dispute' (a withdrawal, negative) and
+-- 'dispute_reversal' (money returned, positive), split by the same weight as refunds. It is normally
+-- zero or positive; a net reversal surplus would be negative and is kept as it is, not clamped. The
+-- dispute fee is a Stripe fee on the order and is already in processing_fee, so it is not counted
+-- again. net_distributable = realized_revenue - refunded_amount - disputed_amount - processing_fee.
+-- A chargeback does not vacate a seat: disputed_amount plays no part in is_cancelled.
 --
 -- Seats: a bronco item holds a seat only while its ticket is Active, Paid or Used, or when the item
 -- has no matching ticket row at all -- any other ticket status cancels it, regardless of how much of
@@ -39,8 +49,8 @@
 --                       seats_transferred_out, and every amount is scaled to the seats that stayed.
 --   transfer_in         a transfer line that holds seats. seats = seats held; purchased_at is the transfer
 --                       order's own paid-or-created time; event_key is the new event. Its money is moved
---                       from the root: for each root line, that line's realized revenue, refund, processing
---                       fee and discount, each divided by the seats the line bought, times the seats this
+--                       from the root: for each root line, that line's realized revenue, refund, disputed
+--                       amount, processing fee and discount, each divided by the seats the line bought, times the seats this
 --                       transfer takes from it. list_value = moved realized revenue + moved discount,
 --                       service_fee = 0, fee_source = the root's. net_distributable and both shares are
 --                       recomputed from the moved amounts. The transfer order's own line value is not revenue.
@@ -67,7 +77,9 @@ with event_by_legacy_id as (
 stripe as (
   select order_key,
     sum(fee) as fee,
-    0 - sum(if(type in ('refund', 'payment_refund'), amount, 0)) as refunded,  -- 0 - x, not -x: no refund is 0.0, never -0.0
+    -- 0 - x, not -x: no refund is 0.0, never -0.0
+    0 - sum(if(type in ('refund', 'payment_refund', 'refund_failure'), amount, 0)) as refunded,
+    0 - sum(if(reporting_category in ('dispute', 'dispute_reversal'), amount, 0)) as disputed,
     countif(source_object = 'charge') > 0 as has_charge
   from {{ ref('core_stripe_transactions') }}
   where order_key is not null
@@ -91,6 +103,7 @@ bronco as (
     coalesce(o.discount, 0) as order_discount,
     coalesce(o.service_fee, 0) as order_service_fee,
     coalesce(r.refunded, 0) as order_refunded,
+    coalesce(s.disputed, 0) as order_disputed,
     false as refund_by_status,                        -- bronco refunds always come from CMS refunds, never a status fallback
     coalesce(o.total, 0) > 0 as card_paid,
     coalesce(t.status not in ('Active', 'Paid', 'Used'), false) as ticket_refunded,
@@ -99,6 +112,7 @@ bronco as (
   from {{ ref('stg_cms__order_items') }} i
   join {{ ref('stg_cms__orders') }} o using (order_key)
   left join cms_refunds r using (order_key)
+  left join stripe s using (order_key)
   left join {{ ref('stg_cms__tickets') }} t using (ticket_key)
   where o.source = 'webapp' and o.status in ('Paid', 'Partial Refund', 'Refunded')
 ),
@@ -114,6 +128,7 @@ legacy as (
     0.0 as order_discount,
     0.0 as order_service_fee,
     coalesce(s.refunded, 0) as order_refunded,
+    coalesce(s.disputed, 0) as order_disputed,
     coalesce(s.refunded, 0) <= 0 and o.status = 'refunded' as refund_by_status,
     coalesce(o.total, 0) > 0 as card_paid,
     false as ticket_refunded,
@@ -129,14 +144,14 @@ legacy as (
 ),
 items as (
   select order_item_key, order_key, source_system, item_kind, event_key, purchased_at, seats, list_value, weight_base,
-    line_discount, order_discount, order_service_fee, order_refunded, refund_by_status, card_paid, ticket_refunded,
+    line_discount, order_discount, order_service_fee, order_refunded, order_disputed, refund_by_status, card_paid, ticket_refunded,
     order_status, zero_total_legacy
   from bronco
   union all
   select order_item_key, order_key, source_system,
     case item_kind_raw when 'ticket' then 'ticket' when 'gift_card' then 'gift_card' else 'other' end,
     event_key, purchased_at, seats, list_value, weight_base,
-    line_discount, order_discount, order_service_fee, order_refunded, refund_by_status, card_paid, ticket_refunded,
+    line_discount, order_discount, order_service_fee, order_refunded, order_disputed, refund_by_status, card_paid, ticket_refunded,
     order_status, zero_total_legacy
   from legacy
 ),
@@ -158,7 +173,8 @@ refunded as (
   select *,
     -- Legacy's status-refund case refunds each item's own realized revenue in full, not a weighted
     -- share of the order's (unreliable) total; every other case is the usual weighted split.
-    case when refund_by_status then realized_revenue else order_refunded * w end as refunded_amount
+    case when refund_by_status then realized_revenue else order_refunded * w end as refunded_amount,
+    order_disputed * w as disputed_amount
   from revenue
 ),
 fees as (
@@ -204,7 +220,7 @@ held_lines as (
 -- [seats_before, seats_before + seats_given_up) with the transfer's held positions [held_before,
 -- held_before + seats_held).
 pairs as (
-  select h.order_item_key, r.realized_revenue, r.refunded_amount, r.processing_fee, r.discount, r.seats as root_line_seats,
+  select h.order_item_key, r.realized_revenue, r.refunded_amount, r.disputed_amount, r.processing_fee, r.discount, r.seats as root_line_seats,
     greatest(0, least(r.seats_before + r.seats_given_up, h.held_before + h.seats_held)
       - greatest(r.seats_before, h.held_before)) as seats_taken
   from held_lines h
@@ -214,6 +230,7 @@ moved as (
   select order_item_key,
     sum(coalesce(safe_divide(realized_revenue, root_line_seats), 0) * seats_taken) as realized_revenue,
     sum(coalesce(safe_divide(refunded_amount, root_line_seats), 0) * seats_taken) as refunded_amount,
+    sum(coalesce(safe_divide(disputed_amount, root_line_seats), 0) * seats_taken) as disputed_amount,
     sum(coalesce(safe_divide(processing_fee, root_line_seats), 0) * seats_taken) as processing_fee,
     sum(coalesce(safe_divide(discount, root_line_seats), 0) * seats_taken) as discount
   from pairs
@@ -251,6 +268,7 @@ kept as (
     f.keep * f.service_fee as service_fee,
     f.keep * f.realized_revenue as realized_revenue,
     f.keep * f.refunded_amount as refunded_amount,
+    f.keep * f.disputed_amount as disputed_amount,
     f.keep * f.processing_fee as processing_fee,
     f.fee_source,
     cast(null as string) as transfer_root_order_key,
@@ -273,6 +291,7 @@ transferred as (
     0.0 as service_fee,
     coalesce(m.realized_revenue, 0) as realized_revenue,
     coalesce(m.refunded_amount, 0) as refunded_amount,
+    coalesce(m.disputed_amount, 0) as disputed_amount,
     coalesce(m.processing_fee, 0) as processing_fee,
     -- a root with no ticket lines gives up nothing, so its transfers hold seats with no money and no fee
     if(t.seats_held > 0 and m.order_item_key is not null, rf.fee_source, 'none') as fee_source,
@@ -300,10 +319,11 @@ select order_item_key, order_key, source_system,
   round(service_fee, 6) as service_fee,
   round(realized_revenue, 6) as realized_revenue,
   round(refunded_amount, 6) as refunded_amount,
+  round(disputed_amount, 6) as disputed_amount,
   round(processing_fee, 6) as processing_fee,
   fee_source,
-  round(realized_revenue - refunded_amount - processing_fee, 6) as net_distributable,
-  round({{ var('sns_share_rate') }} * (realized_revenue - refunded_amount - processing_fee), 6) as sns_share,
-  round({{ var('instructor_share_rate') }} * (realized_revenue - refunded_amount - processing_fee), 6) as instructor_share,
+  round(realized_revenue - refunded_amount - disputed_amount - processing_fee, 6) as net_distributable,
+  round({{ var('sns_share_rate') }} * (realized_revenue - refunded_amount - disputed_amount - processing_fee), 6) as sns_share,
+  round({{ var('instructor_share_rate') }} * (realized_revenue - refunded_amount - disputed_amount - processing_fee), 6) as instructor_share,
   is_cancelled
 from assembled

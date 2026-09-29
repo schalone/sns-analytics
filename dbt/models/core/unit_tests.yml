@@ -196,9 +196,9 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {order_item_key: A1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
-        - {order_item_key: A2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
-        - {order_item_key: F1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-11", seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 50, processing_fee: 1.75, fee_source: actual, net_distributable: -1.75, sns_share: -0.7, instructor_share: -1.05, is_cancelled: false}
+        - {order_item_key: A1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, disputed_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
+        - {order_item_key: A2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, disputed_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
+        - {order_item_key: F1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-11", seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 50, disputed_amount: 0, processing_fee: 1.75, fee_source: actual, net_distributable: -1.75, sns_share: -0.7, instructor_share: -1.05, is_cancelled: false}
 
   - name: order_item_economics_zero_value_order
     description: A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
@@ -229,8 +229,8 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {order_item_key: Z1, seats: 1, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
-        - {order_item_key: Z2, seats: 1, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
+        - {order_item_key: Z1, seats: 1, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
+        - {order_item_key: Z2, seats: 1, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
 
   - name: order_item_economics_legacy
     description: >
@@ -295,12 +295,12 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {order_item_key: P1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 25, processing_fee: 1.6, fee_source: actual, net_distributable: 23.4, sns_share: 9.36, instructor_share: 14.04, is_cancelled: true}
-        - {order_item_key: P2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 25, processing_fee: 1.6, fee_source: actual, net_distributable: 23.4, sns_share: 9.36, instructor_share: 14.04, is_cancelled: false}
-        - {order_item_key: P3, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
-        - {order_item_key: "woo-li-1", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 2, list_value: 60, discount: 10, service_fee: 0, realized_revenue: 50, refunded_amount: 0, processing_fee: 1.75, fee_source: estimated, net_distributable: 48.25, sns_share: 19.3, instructor_share: 28.95, is_cancelled: false}
-        - {order_item_key: "woo-li-2", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 40, discount: 0, service_fee: 0, realized_revenue: 40, refunded_amount: 40, processing_fee: 1.46, fee_source: actual, net_distributable: -1.46, sns_share: -0.584, instructor_share: -0.876, is_cancelled: true}
-        - {order_item_key: "woo-li-3", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 30, discount: 0, service_fee: 0, realized_revenue: 30, refunded_amount: 30, processing_fee: 1.17, fee_source: estimated, net_distributable: -1.17, sns_share: -0.468, instructor_share: -0.702, is_cancelled: true}
+        - {order_item_key: P1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 25, disputed_amount: 0, processing_fee: 1.6, fee_source: actual, net_distributable: 23.4, sns_share: 9.36, instructor_share: 14.04, is_cancelled: true}
+        - {order_item_key: P2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 25, disputed_amount: 0, processing_fee: 1.6, fee_source: actual, net_distributable: 23.4, sns_share: 9.36, instructor_share: 14.04, is_cancelled: false}
+        - {order_item_key: P3, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, seats: 1, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+        - {order_item_key: "woo-li-1", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 2, list_value: 60, discount: 10, service_fee: 0, realized_revenue: 50, refunded_amount: 0, disputed_amount: 0, processing_fee: 1.75, fee_source: estimated, net_distributable: 48.25, sns_share: 19.3, instructor_share: 28.95, is_cancelled: false}
+        - {order_item_key: "woo-li-2", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 40, discount: 0, service_fee: 0, realized_revenue: 40, refunded_amount: 40, disputed_amount: 0, processing_fee: 1.46, fee_source: actual, net_distributable: -1.46, sns_share: -0.584, instructor_share: -0.876, is_cancelled: true}
+        - {order_item_key: "woo-li-3", source_system: woocommerce, platform_era: legacy_event_tickets, item_kind: ticket, event_key: "woo-ev-600", seats: 1, list_value: 30, discount: 0, service_fee: 0, realized_revenue: 30, refunded_amount: 30, disputed_amount: 0, processing_fee: 1.17, fee_source: estimated, net_distributable: -1.17, sns_share: -0.468, instructor_share: -0.702, is_cancelled: true}
 
   - name: order_item_economics_legacy_zero_total_and_multi_line
     description: >
@@ -351,13 +351,13 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {order_item_key: "woo-li-z1a", list_value: 70, discount: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false}
-        - {order_item_key: "woo-li-z1b", list_value: 30, discount: 0, realized_revenue: 30, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 30, sns_share: 12, instructor_share: 18, is_cancelled: false}
-        - {order_item_key: "woo-li-z2a", list_value: 70, discount: 0, realized_revenue: 70, refunded_amount: 70, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
-        - {order_item_key: "woo-li-z2b", list_value: 30, discount: 0, realized_revenue: 30, refunded_amount: 30, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
-        - {order_item_key: "woo-li-m1a", list_value: 75, discount: 0, realized_revenue: 75, refunded_amount: 15, processing_fee: 2.4, fee_source: actual, net_distributable: 57.6, sns_share: 23.04, instructor_share: 34.56, is_cancelled: false}
-        - {order_item_key: "woo-li-m1b", list_value: 25, discount: 0, realized_revenue: 25, refunded_amount: 5, processing_fee: 0.8, fee_source: actual, net_distributable: 19.2, sns_share: 7.68, instructor_share: 11.52, is_cancelled: false}
-        - {order_item_key: "woo-li-s1", list_value: 45, discount: 0, realized_revenue: 45, refunded_amount: 0, processing_fee: 1.605, fee_source: estimated, net_distributable: 43.395, sns_share: 17.358, instructor_share: 26.037, is_cancelled: false}
+        - {order_item_key: "woo-li-z1a", list_value: 70, discount: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false}
+        - {order_item_key: "woo-li-z1b", list_value: 30, discount: 0, realized_revenue: 30, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 30, sns_share: 12, instructor_share: 18, is_cancelled: false}
+        - {order_item_key: "woo-li-z2a", list_value: 70, discount: 0, realized_revenue: 70, refunded_amount: 70, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+        - {order_item_key: "woo-li-z2b", list_value: 30, discount: 0, realized_revenue: 30, refunded_amount: 30, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+        - {order_item_key: "woo-li-m1a", list_value: 75, discount: 0, realized_revenue: 75, refunded_amount: 15, disputed_amount: 0, processing_fee: 2.4, fee_source: actual, net_distributable: 57.6, sns_share: 23.04, instructor_share: 34.56, is_cancelled: false}
+        - {order_item_key: "woo-li-m1b", list_value: 25, discount: 0, realized_revenue: 25, refunded_amount: 5, disputed_amount: 0, processing_fee: 0.8, fee_source: actual, net_distributable: 19.2, sns_share: 7.68, instructor_share: 11.52, is_cancelled: false}
+        - {order_item_key: "woo-li-s1", list_value: 45, discount: 0, realized_revenue: 45, refunded_amount: 0, disputed_amount: 0, processing_fee: 1.605, fee_source: estimated, net_distributable: 43.395, sns_share: 17.358, instructor_share: 26.037, is_cancelled: false}
 
   - name: bookings_are_ticket_items_with_event_timing
     description: Only ticket items become bookings. A sale recorded after the event is counted on the event date. A cancelled booking has no net seats.
@@ -438,7 +438,10 @@ unit_tests:
         - {date: "2026-09-02", platform: meta, metro_key: m2, event_key: null, spend: 25}
 
   - name: event_daily_curve
-    description: Cumulative seats by day, percentage sold against capacity, spend attached on the day it was spent.
+    description: >
+      Cumulative seats by day, percentage sold against capacity, spend attached on the day it was spent.
+      cumulative_realized_revenue is net of refunds and disputes: b4's chargeback of 30 on the event day takes
+      630 down to 600 (and its sns_share of -12 takes 243.2 to 231.2).
     model: core_event_daily
     overrides:
       vars: {curve_days: 3}
@@ -448,9 +451,10 @@ unit_tests:
           - {event_key: E1, event_date: "2026-09-10", capacity: 10, platform_era: bronco, has_event_date: true}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: b1, event_key: E1, sale_date: "2026-09-05", net_seats: 4, realized_revenue: 252, refunded_amount: 0, sns_share: 97.6}
-          - {booking_key: b2, event_key: E1, sale_date: "2026-09-09", net_seats: 6, realized_revenue: 378, refunded_amount: 0, sns_share: 146.4}
-          - {booking_key: b3, event_key: E1, sale_date: "2026-09-09", net_seats: 0, realized_revenue: 63, refunded_amount: 63, sns_share: -0.8}
+          - {booking_key: b1, event_key: E1, sale_date: "2026-09-05", net_seats: 4, realized_revenue: 252, refunded_amount: 0, disputed_amount: 0, sns_share: 97.6}
+          - {booking_key: b2, event_key: E1, sale_date: "2026-09-09", net_seats: 6, realized_revenue: 378, refunded_amount: 0, disputed_amount: 0, sns_share: 146.4}
+          - {booking_key: b3, event_key: E1, sale_date: "2026-09-09", net_seats: 0, realized_revenue: 63, refunded_amount: 63, disputed_amount: 0, sns_share: -0.8}
+          - {booking_key: b4, event_key: E1, sale_date: "2026-09-10", net_seats: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 30, sns_share: -12}
       - input: ref('core_ad_spend_allocation')
         rows:
           - {date: "2026-09-05", platform: meta, metro_key: m1, event_key: E1, spend: 12}
@@ -463,7 +467,7 @@ unit_tests:
         - {event_key: E1, snapshot_date: "2026-09-07", days_until_event: 3, seats_sold_that_day: 0, cumulative_seats: 4, remaining_capacity: 6, pct_sold: 0.4, cumulative_realized_revenue: 252, cumulative_sns_share: 97.6, ad_spend_that_day: 0, cumulative_ad_spend: 15, has_spend_data_that_day: false}
         - {event_key: E1, snapshot_date: "2026-09-08", days_until_event: 2, seats_sold_that_day: 0, cumulative_seats: 4, remaining_capacity: 6, pct_sold: 0.4, cumulative_realized_revenue: 252, cumulative_sns_share: 97.6, ad_spend_that_day: 0, cumulative_ad_spend: 15, has_spend_data_that_day: true}
         - {event_key: E1, snapshot_date: "2026-09-09", days_until_event: 1, seats_sold_that_day: 6, cumulative_seats: 10, remaining_capacity: 0, pct_sold: 1.0, cumulative_realized_revenue: 630, cumulative_sns_share: 243.2, ad_spend_that_day: 0, cumulative_ad_spend: 15, has_spend_data_that_day: false}
-        - {event_key: E1, snapshot_date: "2026-09-10", days_until_event: 0, seats_sold_that_day: 0, cumulative_seats: 10, remaining_capacity: 0, pct_sold: 1.0, cumulative_realized_revenue: 630, cumulative_sns_share: 243.2, ad_spend_that_day: 0, cumulative_ad_spend: 15, has_spend_data_that_day: false}
+        - {event_key: E1, snapshot_date: "2026-09-10", days_until_event: 0, seats_sold_that_day: 0, cumulative_seats: 10, remaining_capacity: 0, pct_sold: 1.0, cumulative_realized_revenue: 600, cumulative_sns_share: 231.2, ad_spend_that_day: 0, cumulative_ad_spend: 15, has_spend_data_that_day: false}
 
   - name: event_daily_no_capacity
     description: With no capacity there is no percentage sold and no remaining capacity; seats still accumulate.
@@ -477,8 +481,8 @@ unit_tests:
           - {event_key: E2, event_date: null, capacity: 10, platform_era: legacy_event_tickets, has_event_date: false}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: b1, event_key: E1, sale_date: "2024-05-03", net_seats: 3, realized_revenue: 150, refunded_amount: 0, sns_share: 58}
-          - {booking_key: b2, event_key: E2, sale_date: "2018-05-03", net_seats: 3, realized_revenue: 150, refunded_amount: 0, sns_share: 58}
+          - {booking_key: b1, event_key: E1, sale_date: "2024-05-03", net_seats: 3, realized_revenue: 150, refunded_amount: 0, disputed_amount: 0, sns_share: 58}
+          - {booking_key: b2, event_key: E2, sale_date: "2018-05-03", net_seats: 3, realized_revenue: 150, refunded_amount: 0, disputed_amount: 0, sns_share: 58}
       - input: ref('core_ad_spend_allocation')
         rows: []
     expect:
@@ -497,8 +501,8 @@ unit_tests:
           - {event_key: E1, event_date: "2024-05-04", capacity: 4, platform_era: legacy_event_tickets, has_event_date: true}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: b1, event_key: E1, sale_date: "2024-05-03", net_seats: 3, realized_revenue: 150, refunded_amount: 0, sns_share: 58}
-          - {booking_key: b2, event_key: E1, sale_date: "2024-05-04", net_seats: 2, realized_revenue: 100, refunded_amount: 0, sns_share: 38}
+          - {booking_key: b1, event_key: E1, sale_date: "2024-05-03", net_seats: 3, realized_revenue: 150, refunded_amount: 0, disputed_amount: 0, sns_share: 58}
+          - {booking_key: b2, event_key: E1, sale_date: "2024-05-04", net_seats: 2, realized_revenue: 100, refunded_amount: 0, disputed_amount: 0, sns_share: 38}
       - input: ref('core_ad_spend_allocation')
         rows: []
     expect:
@@ -518,10 +522,10 @@ unit_tests:
           - {event_key: E4, title: "No date", event_date: null, start_at: null, time_zone: "America/New_York", metro_key: m1, capacity: 8, capacity_source: cms, ticket_price: 45, platform_era: legacy_event_tickets, has_event_date: false}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: b1, event_key: E1, customer_hash: h1, seats: 4, net_seats: 4, realized_revenue: 252, refunded_amount: 0, processing_fee: 8, fee_source: actual, net_distributable: 244, sns_share: 97.6, instructor_share: 146.4, is_cancelled: false}
-          - {booking_key: b2, event_key: E1, customer_hash: h2, seats: 6, net_seats: 6, realized_revenue: 378, refunded_amount: 0, processing_fee: 12, fee_source: actual, net_distributable: 366, sns_share: 146.4, instructor_share: 219.6, is_cancelled: false}
-          - {booking_key: b3, event_key: E2, customer_hash: h1, seats: 3, net_seats: 3, realized_revenue: 150, refunded_amount: 0, processing_fee: 5, fee_source: estimated, net_distributable: 145, sns_share: 58, instructor_share: 87, is_cancelled: false}
-          - {booking_key: b4, event_key: E4, customer_hash: h3, seats: 2, net_seats: 2, realized_revenue: 90, refunded_amount: 0, processing_fee: 3, fee_source: actual, net_distributable: 87, sns_share: 34.8, instructor_share: 52.2, is_cancelled: false}
+          - {booking_key: b1, event_key: E1, customer_hash: h1, seats: 4, net_seats: 4, realized_revenue: 252, refunded_amount: 0, disputed_amount: 0, processing_fee: 8, fee_source: actual, net_distributable: 244, sns_share: 97.6, instructor_share: 146.4, is_cancelled: false}
+          - {booking_key: b2, event_key: E1, customer_hash: h2, seats: 6, net_seats: 6, realized_revenue: 378, refunded_amount: 0, disputed_amount: 0, processing_fee: 12, fee_source: actual, net_distributable: 366, sns_share: 146.4, instructor_share: 219.6, is_cancelled: false}
+          - {booking_key: b3, event_key: E2, customer_hash: h1, seats: 3, net_seats: 3, realized_revenue: 150, refunded_amount: 0, disputed_amount: 0, processing_fee: 5, fee_source: estimated, net_distributable: 145, sns_share: 58, instructor_share: 87, is_cancelled: false}
+          - {booking_key: b4, event_key: E4, customer_hash: h3, seats: 2, net_seats: 2, realized_revenue: 90, refunded_amount: 0, disputed_amount: 0, processing_fee: 3, fee_source: actual, net_distributable: 87, sns_share: 34.8, instructor_share: 52.2, is_cancelled: false}
       - input: ref('core_event_daily')
         rows:
           - {event_key: E1, snapshot_date: "2026-09-05", days_until_event: 5, cumulative_seats: 4, pct_sold: 0.4, ad_spend_that_day: 15, has_spend_data_that_day: true}
@@ -543,7 +547,9 @@ unit_tests:
         - {event_key: E4, weekday: null, is_weekend: null, month: null, season: null, start_hour_local: null, seats_sold: 2, bookings: 1, customers: 1, utilisation: 0.25, utilisation_band: "<40", sold_out: false, realized_revenue: 90, processing_fee: 3, fee_actual_share: 1.0, net_distributable: 87, sns_share: 34.8, instructor_share: 52.2, instructor_materials_estimate: 12, allocated_ad_spend: null, has_ad_spend_data: false, sns_contribution_before_ads: 34.8, sns_contribution: null, sns_share_per_available_seat: 4.35, sns_share_per_sold_seat: 17.4, contribution_per_available_seat: null, contribution_per_sold_seat: null, first_sale_days_before: null, days_before_at_25pct: null, days_before_at_50pct: null, days_before_at_75pct: null, days_before_at_sellout: null}
 
   - name: customers_span_both_eras
-    description: One person who bought on the legacy site and on the new platform is one customer. Unresolved orders create no customer.
+    description: >
+      One person who bought on the legacy site and on the new platform is one customer. Unresolved orders create no
+      customer. lifetime_realized_revenue is net of refunds and disputes (woo-cust-66: 40 less a chargeback of 10).
     model: core_customers
     given:
       - input: ref('core_orders')
@@ -556,11 +562,11 @@ unit_tests:
           - {order_key: "woo-4", is_transfer: false, customer_hash: null, identity_source: unresolved, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: k1, order_key: "woo-1", event_key: E1, customer_hash: h1, identity_source: stripe, purchase_date: "2025-01-10", net_seats: 2, seats: 2, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 100, refunded_amount: 0, sns_share: 38}
-          - {booking_key: k2, order_key: "woo-2", event_key: E2, customer_hash: h1, identity_source: woo_propagated, purchase_date: "2025-03-01", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 50, refunded_amount: 0, sns_share: 19}
-          - {booking_key: k3, order_key: A, event_key: E3, customer_hash: h1, identity_source: cms, purchase_date: "2026-08-01", net_seats: 2, seats: 2, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 126, refunded_amount: 0, sns_share: 48.8}
-          - {booking_key: k4, order_key: B, event_key: E3, customer_hash: h2, identity_source: cms, purchase_date: "2026-08-02", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 63, refunded_amount: 63, sns_share: -0.8}
-          - {booking_key: k5, order_key: "woo-3", event_key: E1, customer_hash: "woo-cust-66", identity_source: woo_surrogate, purchase_date: "2019-08-02", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 40, refunded_amount: 0, sns_share: 15}
+          - {booking_key: k1, order_key: "woo-1", event_key: E1, customer_hash: h1, identity_source: stripe, purchase_date: "2025-01-10", net_seats: 2, seats: 2, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 100, refunded_amount: 0, disputed_amount: 0, sns_share: 38}
+          - {booking_key: k2, order_key: "woo-2", event_key: E2, customer_hash: h1, identity_source: woo_propagated, purchase_date: "2025-03-01", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 50, refunded_amount: 0, disputed_amount: 0, sns_share: 19}
+          - {booking_key: k3, order_key: A, event_key: E3, customer_hash: h1, identity_source: cms, purchase_date: "2026-08-01", net_seats: 2, seats: 2, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 126, refunded_amount: 0, disputed_amount: 0, sns_share: 48.8}
+          - {booking_key: k4, order_key: B, event_key: E3, customer_hash: h2, identity_source: cms, purchase_date: "2026-08-02", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 63, refunded_amount: 63, disputed_amount: 0, sns_share: -0.8}
+          - {booking_key: k5, order_key: "woo-3", event_key: E1, customer_hash: "woo-cust-66", identity_source: woo_surrogate, purchase_date: "2019-08-02", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 40, refunded_amount: 0, disputed_amount: 10, sns_share: 15}
       - input: ref('core_events')
         rows:
           - {event_key: E1, metro_key: boston}
@@ -576,7 +582,7 @@ unit_tests:
       rows:
         - {customer_hash: h1, is_surrogate: false, first_purchase_date: "2025-01-10", most_recent_purchase_date: "2026-08-01", first_era: legacy_event_tickets, bought_in_both_eras: true, lifetime_orders: 3, lifetime_events: 3, lifetime_seats: 5, lifetime_realized_revenue: 276, lifetime_sns_share: 105.8, home_metro_key: boston, first_order_channel: null, is_repeat: true, days_first_to_second_purchase: 50}
         - {customer_hash: h2, is_surrogate: false, first_purchase_date: "2026-08-02", most_recent_purchase_date: "2026-08-02", first_era: bronco, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 0, lifetime_sns_share: -0.8, home_metro_key: nashville, first_order_channel: "Paid Social", is_repeat: false, days_first_to_second_purchase: null}
-        - {customer_hash: "woo-cust-66", is_surrogate: true, first_purchase_date: "2019-08-02", most_recent_purchase_date: "2019-08-02", first_era: legacy_event_tickets, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 40, lifetime_sns_share: 15, home_metro_key: boston, first_order_channel: null, is_repeat: false, days_first_to_second_purchase: null}
+        - {customer_hash: "woo-cust-66", is_surrogate: true, first_purchase_date: "2019-08-02", most_recent_purchase_date: "2019-08-02", first_era: legacy_event_tickets, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 30, lifetime_sns_share: 15, home_metro_key: boston, first_order_channel: null, is_repeat: false, days_first_to_second_purchase: null}
 
   - name: seat_transfers_find_root_and_hold_seats
     description: >
@@ -747,26 +753,26 @@ unit_tests:
       # Worked by hand in the task report. Per-seat amounts are the root line's amounts divided by the seats
       # it bought; G's fees are 4.22 x 70 / 135 = 2.188148... and 4.22 x 65 / 135 = 2.031851..., rounded to 6.
       rows:
-        - {order_item_key: "woo-li-r1", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 2, seats_transferred_out: 1, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c1", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: "woo-r1"}
-        - {order_item_key: "woo-li-r2", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 2, seats_transferred_out: 2, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c2a", booking_kind: transfer_in, event_key: "woo-ev-603", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, processing_fee: 2.035, fee_source: actual, net_distributable: 62.965, sns_share: 25.186, instructor_share: 37.779, is_cancelled: false, transfer_root_order_key: "woo-r2"}
-        - {order_item_key: "woo-li-c2b", booking_kind: transfer_in, event_key: "woo-ev-603", purchase_date: "2024-03-06", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, processing_fee: 2.035, fee_source: actual, net_distributable: 62.965, sns_share: 25.186, instructor_share: 37.779, is_cancelled: false, transfer_root_order_key: "woo-r2"}
-        - {order_item_key: "woo-li-r3", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c3a", booking_kind: transfer_superseded, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-r3"}
-        - {order_item_key: "woo-li-c3b", booking_kind: transfer_in, event_key: "woo-ev-604", purchase_date: "2024-03-09", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: false, transfer_root_order_key: "woo-r3"}
-        - {order_item_key: "woo-li-r4", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c4a", booking_kind: transfer_superseded, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-r4"}
-        - {order_item_key: "woo-li-c4b", booking_kind: transfer_in, event_key: "woo-ev-605", purchase_date: "2024-03-09", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: false, transfer_root_order_key: "woo-r4"}
-        - {order_item_key: "woo-li-u1", booking_kind: unpaid_zero_total, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 65, sns_share: 26, instructor_share: 39, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-u2", booking_kind: unpaid_zero_total, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 65, sns_share: 26, instructor_share: 39, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-r5", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c5", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 70, processing_fee: 2.33, fee_source: actual, net_distributable: -2.33, sns_share: -0.932, instructor_share: -1.398, is_cancelled: true, transfer_root_order_key: "woo-r5"}
-        - {order_item_key: "woo-li-r6a", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-r6b", booking_kind: purchase, event_key: "woo-ev-606", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, processing_fee: 2.031852, fee_source: actual, net_distributable: 62.968148, sns_share: 25.187259, instructor_share: 37.780889, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c6", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.188148, fee_source: actual, net_distributable: 67.811852, sns_share: 27.124741, instructor_share: 40.687111, is_cancelled: false, transfer_root_order_key: "woo-r6"}
-        - {order_item_key: "woo-li-r7", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-c7", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: true, transfer_root_order_key: "woo-r7"}
+        - {order_item_key: "woo-li-r1", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 2, seats_transferred_out: 1, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c1", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: "woo-r1"}
+        - {order_item_key: "woo-li-r2", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 2, seats_transferred_out: 2, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c2a", booking_kind: transfer_in, event_key: "woo-ev-603", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.035, fee_source: actual, net_distributable: 62.965, sns_share: 25.186, instructor_share: 37.779, is_cancelled: false, transfer_root_order_key: "woo-r2"}
+        - {order_item_key: "woo-li-c2b", booking_kind: transfer_in, event_key: "woo-ev-603", purchase_date: "2024-03-06", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.035, fee_source: actual, net_distributable: 62.965, sns_share: 25.186, instructor_share: 37.779, is_cancelled: false, transfer_root_order_key: "woo-r2"}
+        - {order_item_key: "woo-li-r3", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c3a", booking_kind: transfer_superseded, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-r3"}
+        - {order_item_key: "woo-li-c3b", booking_kind: transfer_in, event_key: "woo-ev-604", purchase_date: "2024-03-09", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: false, transfer_root_order_key: "woo-r3"}
+        - {order_item_key: "woo-li-r4", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c4a", booking_kind: transfer_superseded, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-r4"}
+        - {order_item_key: "woo-li-c4b", booking_kind: transfer_in, event_key: "woo-ev-605", purchase_date: "2024-03-09", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: false, transfer_root_order_key: "woo-r4"}
+        - {order_item_key: "woo-li-u1", booking_kind: unpaid_zero_total, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 65, sns_share: 26, instructor_share: 39, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-u2", booking_kind: unpaid_zero_total, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 65, sns_share: 26, instructor_share: 39, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-r5", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c5", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 70, disputed_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: -2.33, sns_share: -0.932, instructor_share: -1.398, is_cancelled: true, transfer_root_order_key: "woo-r5"}
+        - {order_item_key: "woo-li-r6a", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-r6b", booking_kind: purchase, event_key: "woo-ev-606", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 65, discount: 0, service_fee: 0, realized_revenue: 65, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.031852, fee_source: actual, net_distributable: 62.968148, sns_share: 25.187259, instructor_share: 37.780889, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c6", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.188148, fee_source: actual, net_distributable: 67.811852, sns_share: 27.124741, instructor_share: 40.687111, is_cancelled: false, transfer_root_order_key: "woo-r6"}
+        - {order_item_key: "woo-li-r7", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-c7", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: true, transfer_root_order_key: "woo-r7"}
 
   - name: customer_identity_transfer_takes_root_customer
     description: >
@@ -863,9 +869,9 @@ unit_tests:
           - {order_key: "woo-92", is_transfer: true, customer_hash: h9, identity_source: transfer_parent, created_at: "2024-03-05 15:00:00", business_date: "2024-03-05", platform_era: legacy_event_tickets}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: k90, order_key: "woo-90", event_key: E1, customer_hash: h9, identity_source: stripe, purchase_date: "2024-03-01", booking_kind: purchase, seats: 0, seats_transferred_out: 1, net_seats: 0, realized_revenue: 0, refunded_amount: 0, sns_share: 0}
-          - {booking_key: k91, order_key: "woo-91", event_key: E2, customer_hash: h9, identity_source: transfer_parent, purchase_date: "2024-03-09", booking_kind: transfer_in, seats: 1, seats_transferred_out: 0, net_seats: 1, realized_revenue: 70, refunded_amount: 0, sns_share: 27.068}
-          - {booking_key: k92, order_key: "woo-92", event_key: E3, customer_hash: h9, identity_source: transfer_parent, purchase_date: "2024-03-05", booking_kind: transfer_superseded, seats: 0, seats_transferred_out: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, sns_share: 0}
+          - {booking_key: k90, order_key: "woo-90", event_key: E1, customer_hash: h9, identity_source: stripe, purchase_date: "2024-03-01", booking_kind: purchase, seats: 0, seats_transferred_out: 1, net_seats: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, sns_share: 0}
+          - {booking_key: k91, order_key: "woo-91", event_key: E2, customer_hash: h9, identity_source: transfer_parent, purchase_date: "2024-03-09", booking_kind: transfer_in, seats: 1, seats_transferred_out: 0, net_seats: 1, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, sns_share: 27.068}
+          - {booking_key: k92, order_key: "woo-92", event_key: E3, customer_hash: h9, identity_source: transfer_parent, purchase_date: "2024-03-05", booking_kind: transfer_superseded, seats: 0, seats_transferred_out: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, sns_share: 0}
       - input: ref('core_events')
         rows:
           - {event_key: E1, metro_key: boston}
@@ -1043,24 +1049,106 @@ unit_tests:
       # woo-1002 takes the other. (b) woo-1010: 30, fee 1.17, net 28.83, shares 11.532 / 17.298. (d) 70, fee 2.33,
       # net 67.67, shares 27.068 / 40.602 move to woo-1035; woo-1036 keeps its own 70 with no fee (net 70, 28 / 42).
       rows:
-        - {order_item_key: "woo-li-1000", booking_kind: purchase, event_key: "woo-ev-601", seats_purchased: 2, seats_transferred_out: 1, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-1001", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1000"}
-        - {order_item_key: "woo-li-1002", booking_kind: transfer_in, event_key: "woo-ev-604", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: "woo-1000"}
-        - {order_item_key: "woo-li-1010", booking_kind: purchase, event_key: null, seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 30, realized_revenue: 30, refunded_amount: 0, processing_fee: 1.17, fee_source: actual, net_distributable: 28.83, sns_share: 11.532, instructor_share: 17.298, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-1011", booking_kind: transfer_in, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: "woo-1010"}
-        - {order_item_key: "woo-li-1021", booking_kind: unpaid_zero_total, event_key: "woo-ev-602", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-1030", booking_kind: purchase, event_key: "woo-ev-601", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
-        - {order_item_key: "woo-li-1031", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
-        - {order_item_key: "woo-li-1032", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
-        - {order_item_key: "woo-li-1033", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
-        - {order_item_key: "woo-li-1034", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
-        - {order_item_key: "woo-li-1035", booking_kind: transfer_in, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: false, transfer_root_order_key: "woo-1030"}
-        - {order_item_key: "woo-li-1036", booking_kind: unpaid_zero_total, event_key: "woo-ev-602", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-1000", booking_kind: purchase, event_key: "woo-ev-601", seats_purchased: 2, seats_transferred_out: 1, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-1001", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1000"}
+        - {order_item_key: "woo-li-1002", booking_kind: transfer_in, event_key: "woo-ev-604", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.18, fee_source: actual, net_distributable: 67.82, sns_share: 27.128, instructor_share: 40.692, is_cancelled: false, transfer_root_order_key: "woo-1000"}
+        - {order_item_key: "woo-li-1010", booking_kind: purchase, event_key: null, seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 30, realized_revenue: 30, refunded_amount: 0, disputed_amount: 0, processing_fee: 1.17, fee_source: actual, net_distributable: 28.83, sns_share: 11.532, instructor_share: 17.298, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-1011", booking_kind: transfer_in, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: "woo-1010"}
+        - {order_item_key: "woo-li-1021", booking_kind: unpaid_zero_total, event_key: "woo-ev-602", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-1030", booking_kind: purchase, event_key: "woo-ev-601", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-1031", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
+        - {order_item_key: "woo-li-1032", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
+        - {order_item_key: "woo-li-1033", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
+        - {order_item_key: "woo-li-1034", booking_kind: transfer_superseded, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 0, list_value: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true, transfer_root_order_key: "woo-1030"}
+        - {order_item_key: "woo-li-1035", booking_kind: transfer_in, event_key: "woo-ev-602", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: false, transfer_root_order_key: "woo-1030"}
+        - {order_item_key: "woo-li-1036", booking_kind: unpaid_zero_total, event_key: "woo-ev-602", seats_purchased: 1, seats_transferred_out: 0, seats: 1, list_value: 70, realized_revenue: 70, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 70, sns_share: 28, instructor_share: 42, is_cancelled: false, transfer_root_order_key: null}
+
+  - name: order_item_economics_disputes_and_refund_failures
+    description: >
+      Dispute money is identified by Stripe reporting_category 'dispute' (a withdrawal, negative amount) or
+      'dispute_reversal' (money returned, positive amount). An order's disputed_amount is its net disputed money,
+      split across its items by the same weight as refunds; the dispute fee is already in processing_fee and is not
+      counted again. net_distributable = realized - refunded - disputed - fee. A chargeback does not cancel a seat.
+      A failed refund returns the money: refund_failure (positive amount) reduces the refunded total. woo-d1: a
+      withdrawal of 50 and no reversal, split 30 / 20 over two lines worth 60 and 40. woo-d2: a withdrawal of 50
+      and a reversal of 50 (net 0; the dispute fee and its reversal cancel out too). woo-d3: a refund of 30 and a
+      refund_failure of +30 (refunded 0). woo-d4: a root that bought 2 seats with a withdrawal of 70 gives one seat to
+      a transfer; the dispute moves per seat with the seat, like a refund. Bronco order B: disputes apply to
+      new-platform orders too.
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: B, source: webapp, status: Paid, created_at: "2026-09-10 14:00:00", paid_at: "2026-09-10 14:01:00", subtotal: 50, discount: 0, service_fee: 0, total: 50}
+      - input: ref('stg_cms__order_items')
+        rows:
+          - {order_item_key: B1, order_key: B, item_type: ticket, ticket_key: TB1, event_key: E1, quantity: 1, line_total: 50}
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: TB1, status: Active}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, reporting_category: charge, source_object: charge, order_key: "woo-d1", amount: 100, fee: 3.2, net: 96.8}
+          - {txn_id: t2, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: "woo-d1", amount: -50, fee: 15, net: -65}
+          - {txn_id: t3, type: charge, reporting_category: charge, source_object: charge, order_key: "woo-d2", amount: 100, fee: 3.2, net: 96.8}
+          - {txn_id: t4, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: "woo-d2", amount: -50, fee: 15, net: -65}
+          - {txn_id: t5, type: adjustment, reporting_category: dispute_reversal, source_object: dispute, order_key: "woo-d2", amount: 50, fee: -15, net: 65}
+          - {txn_id: t6, type: charge, reporting_category: charge, source_object: charge, order_key: "woo-d3", amount: 100, fee: 3.2, net: 96.8}
+          - {txn_id: t7, type: refund, reporting_category: refund, source_object: refund, order_key: "woo-d3", amount: -30, fee: 0, net: -30}
+          - {txn_id: t8, type: refund_failure, reporting_category: refund_failure, source_object: refund, order_key: "woo-d3", amount: 30, fee: 0, net: 30}
+          - {txn_id: t9, type: charge, reporting_category: charge, source_object: charge, order_key: "woo-d4", amount: 140, fee: 4.36, net: 135.64}
+          - {txn_id: t10, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: "woo-d4", amount: -70, fee: 15, net: -85}
+          - {txn_id: t11, type: charge, reporting_category: charge, source_object: charge, order_key: B, amount: 50, fee: 1.75, net: 48.25}
+          - {txn_id: t12, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: B, amount: -50, fee: 15, net: -65}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-d1", status: completed, total: 100, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-d2", status: completed, total: 100, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-d3", status: completed, total: 100, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-d4", status: completed, total: 140, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-d4t", status: completed, total: 0, parent_order_key: "woo-d4", created_at: "2024-03-05 15:00:00", paid_at: null}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-d1a", order_key: "woo-d1", woo_product_id: p1, quantity: 1, subtotal: 60, line_total: 60}
+          - {order_item_key: "woo-li-d1b", order_key: "woo-d1", woo_product_id: p1, quantity: 1, subtotal: 40, line_total: 40}
+          - {order_item_key: "woo-li-d2", order_key: "woo-d2", woo_product_id: p1, quantity: 1, subtotal: 100, line_total: 100}
+          - {order_item_key: "woo-li-d3", order_key: "woo-d3", woo_product_id: p1, quantity: 1, subtotal: 100, line_total: 100}
+          - {order_item_key: "woo-li-d4", order_key: "woo-d4", woo_product_id: p1, quantity: 2, subtotal: 140, line_total: 140}
+          - {order_item_key: "woo-li-d4t", order_key: "woo-d4t", woo_product_id: p2, quantity: 1, subtotal: 70, line_total: 70}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: p1, woo_event_id: "601", product_kind: ticket}
+          - {woo_product_id: p2, woo_event_id: "602", product_kind: ticket}
+      - input: ref('core_events')
+        rows:
+          - {event_key: "woo-ev-601", wordpress_source_id: "601", event_source: woo_archive}
+          - {event_key: "woo-ev-602", wordpress_source_id: "602", event_source: woo_archive}
+      - input: ref('core_seat_transfers')
+        rows:
+          - {order_item_key: "woo-li-d4t", order_key: "woo-d4t", root_order_key: "woo-d4", event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 1, is_superseded: false, depth: 1, hold_rank: 1}
+    expect:
+      # woo-d1: fee 3.2 + 15 = 18.2, weights 0.6 / 0.4. Line a: disputed 30, fee 10.92, net 60 - 30 - 10.92 = 19.08,
+      # shares 7.632 / 11.448. Line b: disputed 20, fee 7.28, net 40 - 20 - 7.28 = 12.72, shares 5.088 / 7.632.
+      # woo-d2: disputed -50 + 50 = 0, fee 3.2 + 15 - 15 = 3.2, net 96.8, shares 38.72 / 58.08.
+      # woo-d3: refunded 30 - 30 = 0, fee 3.2, net 96.8.
+      # woo-d4: realized 140, disputed 70, fee 4.36 + 15 = 19.36; per seat 70 / 35 / 9.68, net 70 - 35 - 9.68 = 25.32,
+      # shares 10.128 / 15.192, on the root's remaining seat and on the transfer booking alike.
+      # B: realized 50, disputed 50, fee 1.75 + 15 = 16.75, net -16.75, shares -6.7 / -10.05; ticket Active, not cancelled.
+      rows:
+        - {order_item_key: B1, booking_kind: purchase, seats: 1, realized_revenue: 50, refunded_amount: 0, disputed_amount: 50, processing_fee: 16.75, net_distributable: -16.75, sns_share: -6.7, instructor_share: -10.05, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d1a", booking_kind: purchase, seats: 1, realized_revenue: 60, refunded_amount: 0, disputed_amount: 30, processing_fee: 10.92, net_distributable: 19.08, sns_share: 7.632, instructor_share: 11.448, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d1b", booking_kind: purchase, seats: 1, realized_revenue: 40, refunded_amount: 0, disputed_amount: 20, processing_fee: 7.28, net_distributable: 12.72, sns_share: 5.088, instructor_share: 7.632, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d2", booking_kind: purchase, seats: 1, realized_revenue: 100, refunded_amount: 0, disputed_amount: 0, processing_fee: 3.2, net_distributable: 96.8, sns_share: 38.72, instructor_share: 58.08, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d3", booking_kind: purchase, seats: 1, realized_revenue: 100, refunded_amount: 0, disputed_amount: 0, processing_fee: 3.2, net_distributable: 96.8, sns_share: 38.72, instructor_share: 58.08, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d4", booking_kind: purchase, seats: 1, realized_revenue: 70, refunded_amount: 0, disputed_amount: 35, processing_fee: 9.68, net_distributable: 25.32, sns_share: 10.128, instructor_share: 15.192, is_cancelled: false, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d4t", booking_kind: transfer_in, seats: 1, realized_revenue: 70, refunded_amount: 0, disputed_amount: 35, processing_fee: 9.68, net_distributable: 25.32, sns_share: 10.128, instructor_share: 15.192, is_cancelled: false, transfer_root_order_key: "woo-d4"}
 
   - name: event_economics_counts_seat_holding_bookings
     description: >
       bookings and customers count only booking rows that hold seats (seats > 0). A purchase cancelled by a
-      refund still holds its seat row and counts; a root line that gave up every seat to a transfer and a
+      refund still holds its seat row and counts, and a chargeback (disputed_amount) is summed like a refund; a root line that gave up every seat to a transfer and a
       superseded transfer do not. Money sums are unaffected (those rows carry zero).
     model: core_event_economics
     given:
@@ -1069,15 +1157,16 @@ unit_tests:
           - {event_key: E1, title: "Mixed", event_date: "2024-05-04", start_at: "2024-05-04 23:00:00", time_zone: "America/New_York", metro_key: m1, capacity: 10, capacity_source: woo_products, ticket_price: 70, platform_era: legacy_event_tickets, has_event_date: true}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: b1, event_key: E1, customer_hash: h1, seats: 2, net_seats: 2, realized_revenue: 140, refunded_amount: 0, processing_fee: 4.36, fee_source: actual, net_distributable: 135.64, sns_share: 54.256, instructor_share: 81.384, is_cancelled: false}
-          - {booking_key: b2, event_key: E1, customer_hash: h2, seats: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
-          - {booking_key: b3, event_key: E1, customer_hash: h3, seats: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
-          - {booking_key: b4, event_key: E1, customer_hash: h4, seats: 1, net_seats: 0, realized_revenue: 70, refunded_amount: 70, processing_fee: 2.33, fee_source: actual, net_distributable: -2.33, sns_share: -0.932, instructor_share: -1.398, is_cancelled: true}
+          - {booking_key: b1, event_key: E1, customer_hash: h1, seats: 2, net_seats: 2, realized_revenue: 140, refunded_amount: 0, disputed_amount: 10, processing_fee: 4.36, fee_source: actual, net_distributable: 125.64, sns_share: 50.256, instructor_share: 75.384, is_cancelled: false}
+          - {booking_key: b2, event_key: E1, customer_hash: h2, seats: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
+          - {booking_key: b3, event_key: E1, customer_hash: h3, seats: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, disputed_amount: 0, processing_fee: 0, fee_source: none, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: true}
+          - {booking_key: b4, event_key: E1, customer_hash: h4, seats: 1, net_seats: 0, realized_revenue: 70, refunded_amount: 70, disputed_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: -2.33, sns_share: -0.932, instructor_share: -1.398, is_cancelled: true}
       - input: ref('core_event_daily')
         rows: []
     expect:
       # b1 and b4 hold seat rows (seats 2 and 1): bookings 2, customers 2 (h1, h4). b2 (root line that gave up
       # every seat) and b3 (superseded transfer) have seats 0 and are not counted. seats_sold = sum(net_seats)
-      # = 2 + 0 = 2; realized 140 + 70 = 210; sns_share 54.256 - 0.932 = 53.324.
+      # = 2 + 0 = 2; realized 140 + 70 = 210; refunded 70; disputed 10 (b1's chargeback; it holds its seats);
+      # net 125.64 - 2.33 = 123.31; sns_share 50.256 - 0.932 = 49.324.
       rows:
-        - {event_key: E1, seats_sold: 2, bookings: 2, customers: 2, realized_revenue: 210, sns_share: 53.324}
+        - {event_key: E1, seats_sold: 2, bookings: 2, customers: 2, realized_revenue: 210, refunded_amount: 70, disputed_amount: 10, net_distributable: 123.31, sns_share: 49.324}
