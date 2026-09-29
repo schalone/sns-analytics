@@ -14,9 +14,11 @@
   during that day). The Stripe history load is owned and run by the economic truth layer plan, requires the
   owner's approval, and is a full-history load; this pipeline plan did not run it. Confirm with that plan
   whether the load has completed before relying on Stripe-derived tables.
-- **The whole dbt project builds green** with three expected warnings, each explained in
+- **The whole dbt project builds green in development** (`dev_*` datasets; production has not been built
+  with the economic truth layer, see item 3a) with five expected warnings, each explained in
   `docs/runbook.md` ("Expected warnings"): `assert_webapp_orders_present` and `assert_raw_cms_orders_fresh`
-  (no CMS data yet) and `assert_reconciliation_variance_recent` (Stripe rows with no CMS orders to compare).
+  (no CMS data yet), `assert_reconciliation_variance_recent` (Stripe rows with no CMS orders to compare),
+  `assert_stripe_charges_carry_a_join_key` and `assert_identity_coverage` (fixed archive data).
 - **`ops.load_state` / `ops.run_log` exist** and hold the history of this plan's development runs,
   including the Search Console backfills.
 - **`brief/warehouse.py`** exists and is tested in this repo, but is **not wired into production** — the CMS
@@ -28,7 +30,8 @@
   `sns-analytics-drop` bucket, no Secret Manager placeholders, no Cloud Run jobs, no schedulers.
 - The CMS export API (spec §6) is built and reviewed on a branch in the `sipandscript-sns.webapp.cms` repo
   but not deployed anywhere — the CMS loader cannot run at all yet.
-- Stripe order matching is not delivered yet — see item 9.
+- Stripe order matching and the economic truth layer exist on the branch and in development builds only;
+  production has not been built with them — see items 3a and 9.
 - The Google Ads BigQuery Data Transfer has not been authorised.
 - Meta/Pinterest spend CSVs have never been dropped in the bucket (the bucket doesn't exist yet).
 - The schedulers, the Looker Studio report, and the brief's `BRIEF_SOURCE=warehouse` switch all wait on the
@@ -64,6 +67,18 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
    Who: CMS repo owner. What: the repo's standard production deploy once dev1 checks pass and the MR is
    merged. Verify: `GET /api/export/events?pageSize=1` against production with a valid token returns 200
    with a well-formed envelope (`entity`, `generatedAt`, `items`, `nextCursor`). Unblocks: the CMS loader.
+
+3a. **First production build of the economic truth layer.**
+   Who: the repository owner, or someone with the owner's go-ahead for every step that writes to
+   production. What: follow `docs/runbook.md`, "First production build of the economic truth layer", in its
+   order: merge; verify the prerequisites (dataset-scoped `INFORMATION_SCHEMA.COLUMNS` readable in
+   `staging`, `core`, `mart`, `ops`; Stripe watermarks for all four entities in `ops.load_state`; no `@` in
+   any `raw_stripe` payload); `dbt run --target prod --select core_sessions --full-refresh` (about 10 GiB;
+   production `core_sessions` still has the old `pre_launch` column, and a plain build errors on it);
+   `dbt build --target prod`; refresh the Looker Studio data source fields; then items 4 and 11 (deploy the
+   jobs with the schedulers paused, unpause daily first and check a run, unpause hourly last after measuring
+   one hourly run's billed bytes). Verify: `dbt build --target prod` shows only the runbook's expected
+   warnings. Unblocks: production tables that match this repository.
 
 4. **Run `infra/setup.sh` in Cloud Shell.**
    Who: a human with `gcloud`/`bq` access and IAM admin on `sipandscript` (the dev laptop's `gcloud` and
@@ -122,14 +137,14 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
    with that plan whether the load has completed before relying on Stripe-derived tables. A full Stripe
    load pages the **whole account history**, not only since 2026-06-19. The sanitiser that strips personal
    data from Stripe payloads is merged (commit `4d21fe5`). **Order matching for Stripe rows is delivered by
-   that plan**; until it lands, `core_stripe_transactions.order_key` is NULL on every row and
-   `mart.mart_orders_reconciliation` compares day totals only. The Stripe history is now loaded and its
+   that plan** in `core_stripe_transactions`; production tables get it with the first production build
+   (item 3a). The Stripe history is now loaded and its
    watermark set, so `infra/setup.sh` and `jobs/entrypoint.sh` default the daily job to
    `SOURCES=cms,stripe,gsc,spend`, which loads Stripe incrementally. If the watermark is ever missing, the
    Stripe steps fail (`no Stripe watermark for <entity>: run once with --full to load history`) instead of
-   reloading the history; the history load is a deliberate one-off `python -m loaders run --sources stripe --full`. **A daily job deployed earlier still has `SOURCES=cms,gsc,spend`** and
-   does not load Stripe until the setup script is re-run or the job is updated:
-   `gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'`.
+   reloading the history; the history load is a deliberate one-off `python -m loaders run --sources stripe --full`. No daily job is
+   deployed yet (`infra/setup.sh` has never been run), so the job item 4 creates starts with
+   `SOURCES=cms,stripe,gsc,spend`.
    Verify (once that plan reports done): `mart.mart_orders_reconciliation` has recent rows with
    `variance_pct` populated. Unblocks: spec §11 criteria 1 and 2; the brief's precondition 2.
 
@@ -150,9 +165,12 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
     and confirm exit 0 and the Slack line `sns-analytics daily OK — …` followed by `dbt N models, M tests`
     (investigate `PROBLEMS` via `ops.run_log` first); then
     `gcloud run jobs execute sns-analytics-hourly --region us-east1 --wait` (an OK hourly run prints and
-    does not post to Slack). Then `gcloud scheduler jobs resume sns-analytics-daily --location us-east1 &&
-    gcloud scheduler jobs resume sns-analytics-hourly --location us-east1`. Verify: hourly and daily runs
-    land in `ops.run_log` (steps `dbt.hourly` / `dbt.daily` with `status = 'ok'`). Unblocks: unattended
+    does not post to Slack). Resume the daily scheduler first
+    (`gcloud scheduler jobs resume sns-analytics-daily --location us-east1`) and check one scheduled daily
+    run. Resume the hourly scheduler last
+    (`gcloud scheduler jobs resume sns-analytics-hourly --location us-east1`), only after measuring one
+    hourly run's billed bytes (`docs/runbook.md`, "Cost"). Verify: hourly and daily runs land in
+    `ops.run_log` (steps `dbt.hourly` / `dbt.daily` with `status = 'ok'`). Unblocks: unattended
     operation.
 
 12. **Create the Looker Studio report.**

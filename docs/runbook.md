@@ -76,28 +76,34 @@ retried into the next one.
 `stripe` is in the daily job's `SOURCES`: each daily run loads Stripe incrementally from its watermark. If
 the watermark is missing (a fresh project, or a reset of `ops.load_state`), the Stripe steps fail loudly
 (`no Stripe watermark for <entity>: run once with --full to load history`) rather than reload the whole
-account history; load the history once, deliberately, with `python -m loaders run --sources stripe --full`. **The deployed job still has the old value
-(`cms,gsc,spend`)** until someone re-runs `infra/setup.sh` or updates the job directly:
-
-```bash
-gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'
-```
-
-Until then the daily job does not load Stripe, and fees, refunds and identity for new orders go stale.
+account history; load the history once, deliberately, with `python -m loaders run --sources stripe --full`.
+No daily job is deployed yet: `infra/setup.sh` has never been run (`docs/handoff.md`, "What is NOT live
+yet"), so the job does not exist, and the first run of the script creates it with
+`SOURCES=cms,stripe,gsc,spend`. Re-running the script converges the value on an existing job.
 
 **The hourly selector** (`dbt/selectors.yml`) is every model tagged `hourly` together with all its
-ancestors, minus every model tagged `ga4` and the GA4 source. Hourly-tagged models: `core_orders`,
-`core_tickets`, `core_order_items`, `core_refunds`, `core_events`, `core_venues`, `core_metros`,
-`core_instructors`, `mart_daily_kpis`, `mart_orders_reconciliation`, `mart_event_performance`. Tagging
-`mart_event_performance` hourly pulls its whole ancestry in too, confirmed with
-`dbt ls --selector hourly --resource-type model` (2026-09-27): `core_customer_identity`,
-`core_stripe_transactions`, `core_order_item_economics`, `core_bookings`, `core_event_daily`,
-`core_event_economics`, `core_ad_spend`, `core_ad_spend_allocation`, `ops_unallocated_ad_spend`, every CMS
-and WooCommerce staging view, `stg_stripe__balance_transactions`, `stg_spend__csv`, and both seeds
-(`date_flags`, `campaign_metro_map`) -- the booking-curve and ad-spend-allocation chain that used to build
-only in the daily run. Every test on them runs too. `core_sessions` and `core_session_orders` are tagged
-`ga4` and build in the daily run only (the GA4 daily table lands once a day); the hourly `mart_daily_kpis`
-reads the existing `core_sessions` table. List the exact nodes with `dbt ls --selector hourly`.
+ancestors, minus every model tagged `ga4` and the GA4 source. Only CMS data changes during the day, so the
+event views built over the frozen archive (`core_ad_spend_allocation`, `core_event_daily`,
+`core_event_economics`, `ops_unallocated_ad_spend`, `mart_event_performance`) are not tagged and build in
+the daily run only. `core_seat_transfers`, `core_order_item_economics` and `core_bookings` stay hourly
+because hourly models read them. `dbt ls --selector hourly --resource-type model` prints exactly these
+models (checked 2026-09-29):
+
+- core: `core_bookings`, `core_customer_identity`, `core_events`, `core_instructors`, `core_metros`,
+  `core_order_item_economics`, `core_order_items`, `core_orders`, `core_refunds`, `core_seat_transfers`,
+  `core_stripe_transactions`, `core_tickets`, `core_venues`
+- marts: `mart_daily_kpis`, `mart_orders_reconciliation`
+- staging: `stg_cms__events`, `stg_cms__instructors`, `stg_cms__metros`, `stg_cms__order_items`,
+  `stg_cms__orders`, `stg_cms__refunds`, `stg_cms__tickets`, `stg_cms__venues`,
+  `stg_stripe__balance_transactions`, `stg_woo__events`, `stg_woo__order_line_items`, `stg_woo__orders`,
+  `stg_woo__organizers`, `stg_woo__products`, `stg_woo__venues`
+
+A test runs in the hourly build only when every model it reads is built by it or upstream of it
+(`indirect_selection: buildable`), so a test that also reads a daily-only table (for example
+`assert_event_economics_matches_bookings`) runs in the daily build and never compares fresh bookings with a
+day-old event table. `core_sessions` and `core_session_orders` are tagged `ga4` and build in the daily run
+only (the GA4 daily table lands once a day); the hourly `mart_daily_kpis` reads the existing
+`core_sessions` table. List every node with `dbt ls --selector hourly`.
 
 **Status message.** Each run ends with one status step: one Slack line to `#analytics`
 (`sns-analytics <mode> OK|PROBLEMS — loaders rc=…, dbt rc=…, run <id>`), then `dbt N models, M tests`
@@ -188,7 +194,7 @@ and the money paid for it follow the transfer:
   the number the root bought; earlier ones whose seat moved on again are superseded.
 - In `core_order_item_economics` and `core_bookings`, `booking_kind` says what a row is: `purchase`,
   `transfer_in` (the seat on the new class from the transfer date, carrying the root's per-seat realized
-  revenue, refund and Stripe fee), `transfer_superseded` (no seat, no money), or `unpaid_zero_total` (a
+  revenue, refund, disputed money and Stripe fee), `transfer_superseded` (no seat, no money), or `unpaid_zero_total` (a
   zero-total order with ticket value and no paid ancestor, kept at its line value with no fee). On the root's
   row, `seats_transferred_out` counts the seats that moved away and `seats` what stayed; its money is scaled
   down to match, so nothing is counted twice.
@@ -196,9 +202,50 @@ and the money paid for it follow the transfer:
   to the root's customer (`identity_source = 'transfer_parent'`), is never a first order, and is left out of
   customer order counts.
 - `mart_daily_kpis` order, ticket-order and seat counts, gross and net revenue and new customers exclude
-  transfer orders; `net_distributable` and `sns_share` include the moved money on the transfer's own row.
+  transfer orders. Acquisition views follow the purchase: in `mart_daily_kpis` and `mart_paid_performance`,
+  `net_distributable` and `sns_share` are summed by `coalesce(transfer_root_order_key, order_key)`, so the
+  moved money stays on the original order's date, channel, metro row and campaign. Event, instructor and
+  customer views follow the seat to the class attended. `mart_orders_reconciliation` counts transfer orders
+  in `transfer_orders`, not in `cms_orders`.
+- A transfer order whose own status is `refunded` while its root was not refunded is cancelled (no seat) but
+  keeps the money moved from the root: that money was paid and not returned.
 - Tests: `assert_transfers_conserve_money` (per root, money is unchanged by transfers) and
   `assert_transfer_seats_within_purchase` (held plus remaining seats equal seats bought).
+
+## First production build of the economic truth layer
+
+Production has not been built with the economic truth layer. Production `core_sessions` still carries the
+old `pre_launch` column, which the models now replace with `platform_era`; because `core_sessions` is
+incremental (`insert_overwrite`), a plain production build errors on it, and `mart_daily_kpis`, which reads
+it, fails until `core_sessions` is fully refreshed. Every step below that writes to production needs the
+owner's go-ahead first. In order:
+
+1. **Merge** the branch.
+2. **Verify the prerequisites.** (a) The production service account can read the dataset-scoped
+   `INFORMATION_SCHEMA.COLUMNS` of `staging`, `core`, `mart` and `ops` (`assert_no_pii_columns` and
+   `assert_no_pre_launch_column` read them). (b) `ops.load_state` holds a watermark for all four Stripe
+   entities (`balance_transactions`, `refunds`, `disputes`, `payouts`). (c) No `raw_stripe` payload contains
+   `@` (the query in `dbt/tests/staging/assert_no_email_in_raw_stripe.sql` returns no rows).
+3. **Rebuild `core_sessions` from scratch:** `dbt run --target prod --select core_sessions --full-refresh`
+   (about 10 GiB scanned). `core_session_orders` is unchanged and needs no refresh.
+4. **Build everything:** `dbt build --target prod`. Expect only the warnings listed under "Expected
+   warnings". An error skips the models downstream of it: they keep their previous data, stale but not
+   damaged; fix the cause and build again.
+5. **Refresh the Looker Studio data sources' fields** (`pre_launch` became `platform_era`, and the marts
+   have new columns). The Slack brief needs no change.
+6. **Deploy the jobs** with `infra/setup.sh` (Cloud Shell), which creates the schedulers paused.
+7. **Unpause the daily scheduler first**, and check one daily run (Slack line and `ops.run_log`).
+8. **Unpause the hourly scheduler last**, after measuring one hourly run's billed bytes (see "Cost").
+
+## Stripe metadata `order_key` in rows already loaded
+
+The sanitiser no longer keeps the WooCommerce `order_key` from Stripe charge metadata: nothing reads it, and
+with the order id it opened the order on the legacy site. Rows loaded before the change keep it: on
+2026-09-29, 24,726 of 115,287 `raw_stripe.balance_transactions` rows carried `source.metadata.order_key`
+(`raw_stripe.refunds`: none). New loads do not add it. The remedy is to delete the four `raw_stripe` tables
+and reload the history with `python -m loaders run --sources stripe --full` (recreate the tables first with
+`python infra/create_raw_tables.py`); it pages the whole account history. Whether to do it is the owner's
+decision.
 
 ## Rebuilding a model and its children
 
@@ -260,6 +307,10 @@ change must be re-applied to history (it was done once on 2026-09-27 for the att
   tickets/refunds/order items keyed to them) get `platform_era` from `source_system` instead
   (`woocommerce` -> `legacy_event_tickets`, else `bronco`), not from `launch_date` directly.
 - **`ads_customer_id`** (`1863952460`): builds the `google_ads` table identifiers.
+- **`as_of_date`** (default null = today in New York) and **`peer_excluded_statuses`** (default `trash`,
+  `pending`, `private`, `draft`, `auto-draft`, `cancelled`, `canceled`): `mart_event_performance` takes as
+  peers only events dated before `as_of_date` whose status is not in the list (case-insensitive; a NULL
+  status is allowed). Set `as_of_date` only to fix "today", as its unit tests do.
 
 ## Secret rotation
 
@@ -287,7 +338,11 @@ A green `dbt build` today shows exactly these warnings; any error, or any other 
 
 Warn-severity tests that pass today but will warn if their condition appears: `assert_core_sessions_fresh`,
 `assert_raw_gsc_fresh`, `assert_search_page_totals_match_property_totals`, the `core_tickets.event_key`
-relationships test, and the two pinned-fact tests `assert_post_launch_orders_pinned` and
+relationships test, `assert_worked_event_pace` (the worked events' pace and sell-out, which move if the CMS
+dates or sizes an imported event differently), `assert_no_unhandled_platform_transfers` (a new-platform
+ticket transfer, whose money rule is not decided yet), `assert_no_estimated_fee_on_settled_bronco` (a
+card-paid bronco booking older than two days with no Stripe charge), `assert_bronco_bookings_have_event`,
+and the two pinned-fact tests `assert_post_launch_orders_pinned` and
 `assert_post_launch_ticket_revenue_pinned` (warn until the pinned figures are confirmed after the first
 CMS backfill; then raise them to error by deleting their `config(severity='warn')` line).
 `assert_worked_bronco_order_pinned` also passes today and will warn once any new-platform booking is
@@ -295,16 +350,20 @@ more than two days old: it asks for one bronco order to be checked by hand again
 (`scripts/econ_check_order.py --bronco <order number>`) and pinned in `assert_worked_order.sql`, after which
 the warning test is deleted (see `docs/econ-001-validation.md`).
 
+Error-severity tests that pass today only because no new-platform data is loaded:
+`assert_bronco_fee_match_rate` (fails when, in a month with at least 50 card-paid bronco bookings older than
+two days, more than 2% have no Stripe charge) and `assert_bronco_order_realized_matches_total` (a bronco
+order's items must realize its total plus gift card applied, within one cent).
+
 ## Cost
 
-**Stale as of the `mart_event_performance` addition:** the hourly figure below was measured before
-`mart_event_performance` was tagged `hourly`. Tagging it pulled `core_ad_spend`,
-`core_ad_spend_allocation`, `core_bookings`, `core_event_daily`, `core_event_economics`,
-`ops_unallocated_ad_spend` and `stg_spend__csv` into the hourly build (see "Running in the jobs" above) --
-models that previously ran only once a day. This has not been re-measured. Do not rely on the
-hourly row of the table, or the $4.75/month total, for budgeting until a real hourly run under the new
-ancestor set has been measured with the query at the end of this section (summed with `sum(total_bytes_billed)`
-over one hourly run's time window, or filtered to the job's service account, rather than listed row by row).
+**The hourly figure below is stale.** It was measured on 2026-09-27 for an earlier hourly model set. The
+hourly build now also includes the economics models `core_stripe_transactions`, `core_customer_identity`,
+`core_seat_transfers`, `core_order_item_economics` and `core_bookings` (see "Running in the jobs" above; the
+event views, the booking curve and the ad spend allocation build daily only). This has not been re-measured.
+Do not rely on the hourly row of the table, or the $4.75/month total, for budgeting until one real hourly run
+has been measured with the query at the end of this section (summed with `sum(total_bytes_billed)` over one
+hourly run's time window, or filtered to the job's service account, rather than listed row by row).
 
 Spec §10 targets a few GB scanned per day and well under $5/month. Measured on 2026-09-27 from dbt's own
 `run_results.json` (`adapter_response.bytes_processed` / `bytes_billed`, summed over every model and test):

@@ -70,19 +70,20 @@ and what's already live in BigQuery today versus what isn't. See `docs/looker-st
 the Looker Studio report against `mart.mart_daily_kpis` and `mart.mart_paid_performance`.
 
 Two Cloud Run jobs (us-east1) run `jobs/entrypoint.sh` from the same image: `sns-analytics-daily`
-(`MODE=daily`: CMS, Stripe, Search Console and spend loaders, then the whole dbt project; a job deployed
-before Stripe was added still has `SOURCES=cms,gsc,spend`, see `docs/runbook.md`) and `sns-analytics-hourly`
-(`MODE=hourly`: CMS loader, then `dbt build --selector hourly`), on the schedules `infra/setup.sh` creates
-(paused until a human resumes them per `docs/handoff.md`).
+(`MODE=daily`: CMS, Stripe, Search Console and spend loaders, then the whole dbt project) and
+`sns-analytics-hourly` (`MODE=hourly`: CMS loader, then `dbt build --selector hourly`), on the schedules
+`infra/setup.sh` creates (paused until a human resumes them per `docs/handoff.md`). Neither job is deployed
+yet: `infra/setup.sh` has never been run.
 
 ## Economics
 
-Revenue left after refunds and Stripe fees is split 40% to Sip & Script (S&S) and 60% to the instructor.
+Revenue left after refunds, chargebacks and Stripe fees is split 40% to Sip & Script (S&S) and 60% to the
+instructor.
 Per ticket booking (one order item, that is order x event, in `core_bookings`):
 
 ```
 realized_revenue   = ticket line value + allocated service fee - allocated discount
-net_distributable  = realized_revenue - refunded_amount - processing_fee
+net_distributable  = realized_revenue - refunded_amount - disputed_amount - processing_fee
 sns_share          = 0.40 x net_distributable          (dbt var sns_share_rate)
 instructor_share   = 0.60 x net_distributable          (dbt var instructor_share_rate)
 sns_contribution   = sns_share - allocated_ad_spend    (event level and above)
@@ -92,15 +93,21 @@ Materials are paid by instructors from their share and are never subtracted from
 `processing_fee` is the Stripe fee on the order's charge, refund and dispute transactions, allocated by line
 total; when an order has no Stripe match it is estimated (`legacy_fee_rate`, `legacy_fee_fixed`), which
 applies to 14 legacy bookings. A fully refunded booking keeps a negative net: Stripe keeps its fee.
+`refunded_amount` nets out a failed refund (Stripe `refund_failure`), which returns the money.
+`disputed_amount` is the order's net chargeback money in Stripe (reporting category `dispute` less
+`dispute_reversal`), split like a refund; the dispute fee is already in `processing_fee`. A chargeback does
+not cancel the seat. Legacy bookings carry 2,737.00 of net disputed money in all.
 
 **Transferred seats.** The legacy site moved a seat to another class by creating a zero-total order, one
 per seat, whose parent is the original paid order; the instructor who teaches the class attended earns
 the money. So the seat and its money follow the transfer: the transfer booking (`booking_kind =
 'transfer_in'`) sits on the class attended, from the transfer date, and carries the original line's
-realized revenue, refund, fee and shares per seat, found through `transfer_root_order_key`; the original
+realized revenue, refund, disputed money, fee and shares per seat, found through `transfer_root_order_key`; the original
 booking keeps only the seats that stayed (`seats_purchased`, `seats_transferred_out`). A transfer that
 was itself moved on again holds no seat and no money (`transfer_superseded`). Transfer orders are not
-purchases and are left out of the KPI mart's order and seat counts. Zero-total orders with ticket value and no paid
+purchases and are left out of the KPI mart's order and seat counts. Acquisition views follow the purchase:
+`mart_daily_kpis` and `mart_paid_performance` report a transferred seat's money on the original order's
+date, channel, metro row and campaign; event, instructor and customer views follow the seat. Zero-total orders with ticket value and no paid
 origin (`unpaid_zero_total`, likely tickets bought with gift cards, unverified) keep their line
 value with no fee and are labelled so they can be excluded. Gift card sale lines are not bookings, so a seat
 paid for with a gift card counts once, at ticket value, in event and share figures; order gross revenue

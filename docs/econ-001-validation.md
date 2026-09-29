@@ -4,6 +4,11 @@ Date run: 2026-09-28
 Commit: model code at `385445d` (no model SQL changed during validation); tests, script and docs added in the
 commits that follow it on `feat/phase-one`.
 
+Updated 2026-09-29: the model now deducts net disputed (chargeback) money and nets failed refunds (commit
+`89fb4f4`), and the KPI and paid-performance marts credit a transferred seat's money to the original purchase
+(commit `cdf71a4`). Every figure below that those changes move was re-queried from the `dev_flock_*` build
+after them; the worked orders and worked events carry no dispute and are unchanged.
+
 **Where these figures come from.** Every figure below was queried from a build in the `dev_flock_*`
 datasets (`dev_flock_staging`, `dev_flock_core`, `dev_flock_mart`, `dev_flock_ops`), which read the real raw
 and archive datasets. The production `staging`, `core`, `mart` and `ops` datasets have not been rebuilt with
@@ -18,22 +23,25 @@ Orders are identified by `woo-<id>` and events by `woo-ev-<id>` only. No persona
 
 ## Rules validated
 
-The rules of the addendum spec §2, checked against the worked orders and events below.
+The rules of the addendum spec §2, checked against the worked orders and events below. Where a rule reads
+"model computes it as specified", the worked orders prove that the model applies the rule exactly as written
+to Stripe's own figures. That the business actually splits its money this way is the owner's statement; it
+cannot be checked without payout records, which are not used.
 
 | Rule | Result |
 |---|---|
-| 1. The 60/40 split applies after Stripe fees | Confirmed: in all three worked orders the shares equal 0.40 and 0.60 of Stripe's charge less refund less Stripe's own fee, to the cent. |
+| 1. The 60/40 split applies after Stripe fees | Model computes it as specified: in all three worked orders the shares equal 0.40 and 0.60 of Stripe's charge less refund less Stripe's own fee, to the cent. |
 | 2. Service fees are part of the split | Not exercised: the legacy site charged no service fee. Proven by unit tests only. |
-| 3. The split is on final realized revenue; discounts and refunds reduce it | Confirmed: woo-348795 (discounted, 21.00 off) and woo-345525 (fully refunded). |
-| 4. Materials are never subtracted from S&S | Confirmed: on woo-ev-269869 `sns_share` 406.38 = 0.40 x 1,015.95 while the materials estimate (90.00) is shown separately. |
+| 3. The split is on final realized revenue; discounts and refunds reduce it | Model computes it as specified: woo-348795 (discounted, 21.00 off) and woo-345525 (fully refunded). Chargebacks reduce it too (see the dispute row below). |
+| 4. Materials are never subtracted from S&S | Model computes it as specified: on woo-ev-269869 `sns_share` 406.38 = 0.40 x 1,015.95 while the materials estimate (90.00) is shown separately. |
 | 5. S&S pays 100% of advertising | Not exercised: no ad spend is loaded. |
 | 6. The 60/40 rule holds for the whole legacy era | Assumed, not verifiable: no payout records are used. |
 | 7. Google Ads is live; Meta is the main paid channel | Not a model rule; not exercised (no spend loaded). |
 | 8. Both platforms use the same Stripe account | Supported for legacy: 96,864 legacy charges match an archive order. Bronco not yet testable. |
-| Stated assumption: a fully refunded booking has net = -fee | Confirmed: woo-345525 net -2.19; Stripe kept its 2.19 fee and the refund carried no fee of its own. |
-| Stated assumption: dispute fees count as processing fees | Not exercised. |
+| Stated assumption: a fully refunded booking has net = -fee | Model computes it as specified: woo-345525 net -2.19; Stripe kept its 2.19 fee and the refund carried no fee of its own. |
+| Stated assumption: dispute fees count as processing fees | Exercised on real data, not hand-checked. Stripe records a dispute as an `adjustment` with reporting category `dispute` (a withdrawal) or `dispute_reversal` (money returned). On the orders the model counts: 52 withdrawals, -5,265.80, carrying 780.00 of dispute fees, and 20 reversals, +2,528.80, returning 195.00 of fees. The fees are in `processing_fee`; the net withdrawn money, 2,737.00 over 32 orders, is `disputed_amount` and is deducted from net distributable. 14 further disputed orders (995.00 net: 11 failed, 2 cancelled, 1 on-hold) are not orders the model counts. `assert_allocation_conserves_money` checks each order's split against Stripe. |
 | Stated assumptions on gift cards as payment | Not exercised: no legacy order records a gift card applied, and no bronco order is loaded. |
-| Transferred seats (§6.8): the seat and its money follow the transfer | Confirmed: woo-373065 and woo-ev-259204. |
+| Transferred seats (§6.8): the seat and its money follow the transfer | Model computes it as specified: woo-373065 and woo-ev-259204. That a moved seat's money goes to the instructor of the class attended is the owner's statement. |
 
 ## Worked orders
 
@@ -151,22 +159,22 @@ capacity, not recounted.
 From `core_bookings` (legacy era, by purchase year) and `core_event_economics` (dated legacy events, by event
 year). 2026 runs to the end of the legacy era, 2026-06-18.
 
-| Year | Realized revenue | S&S share | Net seats | Sold-out events (event year) |
-|---|---|---|---|---|
-| 2016 | 2,435.00 | 943.54 | 45 | - |
-| 2017 | 63,163.50 | 24,036.69 | 929 | - |
-| 2018 | 130,076.50 | 48,417.41 | 1,880 | - |
-| 2019 | 196,029.69 | 73,687.41 | 2,997 | - |
-| 2020 | 205,708.49 | 76,976.66 | 2,797 | 77 of 422 |
-| 2021 | 616,555.18 | 231,242.78 | 8,976 | 172 of 794 |
-| 2022 | 1,911,280.64 | 722,478.36 | 27,510 | 603 of 2,408 |
-| 2023 | 1,427,664.39 | 538,595.67 | 19,326 | 415 of 2,126 |
-| 2024 | 1,440,467.10 | 547,269.16 | 19,811 | 481 of 1,955 |
-| 2025 | 2,365,095.94 | 896,164.50 | 33,663 | 732 of 2,785 |
-| 2026 | 1,274,908.00 | 485,412.10 | 18,188 | 409 of 1,555 |
-| All | 9,633,384.43 | 3,645,224.28 | 136,122 | 2,889 of 12,045 |
+| Year | Realized revenue | Disputed | S&S share | Net seats | Sold-out events (event year) |
+|---|---|---|---|---|---|
+| 2016 | 2,435.00 | 0.00 | 943.54 | 45 | - |
+| 2017 | 63,163.50 | 0.00 | 24,036.69 | 929 | - |
+| 2018 | 130,076.50 | 0.00 | 48,417.41 | 1,880 | - |
+| 2019 | 196,029.69 | 65.00 | 73,661.41 | 2,997 | - |
+| 2020 | 205,708.49 | 455.00 | 76,794.66 | 2,797 | 77 of 422 |
+| 2021 | 616,555.18 | 740.00 | 230,946.78 | 8,976 | 172 of 794 |
+| 2022 | 1,911,280.64 | 460.00 | 722,294.36 | 27,510 | 603 of 2,408 |
+| 2023 | 1,427,664.39 | 204.00 | 538,514.07 | 19,326 | 415 of 2,126 |
+| 2024 | 1,440,467.10 | 553.00 | 547,047.96 | 19,811 | 481 of 1,955 |
+| 2025 | 2,365,095.94 | 260.00 | 896,060.50 | 33,663 | 732 of 2,785 |
+| 2026 | 1,274,908.00 | 0.00 | 485,412.10 | 18,188 | 409 of 1,555 |
+| All | 9,633,384.43 | 2,737.00 | 3,644,129.48 | 136,122 | 2,889 of 12,045 |
 
-"of N" counts dated legacy events that sold at least one seat. No legacy event before 2020 has an event date.
+Disputed is net chargeback money, already deducted from S&S share (S&S falls by 0.40 of it). "of N" counts dated legacy events that sold at least one seat. No legacy event before 2020 has an event date.
 Realized revenue and S&S share include 32,153.50 of zero-total orders with no parent and 2,140.00 of transfer
 orders that never reach a paid order, 34,293.50 in all, labelled `booking_kind = 'unpaid_zero_total'`. Their
 nature is not established (see "Zero-total orders with ticket value and no paid origin" below); exclude them
@@ -214,7 +222,7 @@ Bookings vs `core_orders` for the new platform could not be compared: no bronco 
 | 1 | One query over `mart_event_performance` and `core_event_daily` answers every milestone question for a dated event | Cannot be evaluated yet | The query runs and, for woo-ev-269869, returns seats, money, shares, pace and the curve, all matching the hand count. Metro, category, peer benchmarks and contribution after ad spend are null because no CMS dimensions and no spend are loaded. |
 | 2 | At least 98% of card-paid bookings in both eras carry an actual Stripe fee | Cannot be evaluated yet | No bronco booking exists. Legacy era: every year from 2019 is at least 99.81% (the lowest, 2019), and only 14 legacy bookings in all use the estimated fee. |
 | 3 | At least 98% of orders from 2019 resolve to a customer, and cross-era customers are one row | Not met | 2019: 96.55%, 2020: 97.58% (every later year is above 99%). The shortfall is guest orders with no Stripe charge: 67 of 2019's 70 and all 36 of 2020's unresolved orders have gross revenue 0. It is fixed archive data. The cross-era half cannot be evaluated: no bronco customer exists. |
-| 4 | No email, name, phone, street address or card detail in any written dataset | Met | `assert_no_pii_columns` passes over the staging, core, mart and ops datasets (two gift-card columns, an amount and a record GUID, match the pattern through "card" and are exempt by exact name); `assert_no_email_in_raw_stripe` passes. Billing city, state and ZIP are stored on orders; they are not on the criterion's list. |
+| 4 | No email, name, phone, street address or card detail in any written dataset | Met, for what was checked | Checked: (a) `assert_no_pii_columns` matches every column NAME in the four datasets dbt writes (staging, core, mart, ops) against a pattern for email, phone, name, street, address, card, last4, purchaser and attendee, and finds none (two gift-card columns, an amount and a record GUID, match through "card" and are exempt by exact name); (b) `assert_no_email_in_raw_stripe` scans every payload in the four `raw_stripe` tables for `@` and finds none. Not checked: column VALUES in the dbt datasets, and values in the other raw datasets (`raw_cms`, `raw_gsc`, `raw_spend`). Billing city, state and ZIP are stored on orders; they are not on the criterion's list. |
 | 5 | The worked order and worked event tests pass | Cannot be evaluated yet | The spec asks for a bronco worked order and none can be chosen until bronco orders are loaded. Legacy era: `assert_worked_order` (three legacy orders) and `assert_worked_event` (two events) pass; `assert_worked_bronco_order_pinned` will warn once a bronco booking is two days old until one is checked and pinned. |
 
 ## Legacy fee estimate
@@ -225,20 +233,20 @@ Matched legacy charges: 96,864 charges, 9,836,419.88 charged, 314,616.03 of fees
 
 ## Warnings outstanding
 
-Final build (`dbt build --exclude core_sessions core_session_orders`, `dev_flock_*`): PASS 313, WARN 5,
-ERROR 0, of 318. Every warning is one the runbook already expects:
+Final build (`dbt build --exclude core_sessions core_session_orders`, `dev_flock_*`, 2026-09-29): PASS 334,
+WARN 5, ERROR 0, of 339. Every warning is one the runbook already expects:
 
 | Test | Rows | Cause |
 |---|---|---|
 | `assert_raw_cms_orders_fresh` | 1 | `raw_cms.orders` is empty; nothing loaded in the last day. |
 | `assert_webapp_orders_present` | 1 | No new-platform orders: the CMS export is not loaded. |
-| `assert_reconciliation_variance_recent` | 30 | Recent bronco days have Stripe charges but no CMS orders to reconcile against. |
+| `assert_reconciliation_variance_recent` | 29 | Recent bronco days have Stripe charges but no CMS orders to reconcile against (the count follows today's date). |
 | `assert_stripe_charges_carry_a_join_key` | 1 | 2016: 204 of 242 charges carry no order reference (fixed archive data). |
 | `assert_identity_coverage` | 2 | Legacy 2019 (96.55%) and 2020 (97.58%) resolved identity, below 98%. |
 
 `assert_worked_bronco_order_pinned` passes today and will warn once a bronco booking is more than two days old.
-The legacy totals above were re-queried after the build and are unchanged (realized 9,633,384.43, S&S
-3,645,224.28, 136,122 seats).
+The legacy totals above were re-queried after the build (realized 9,633,384.43, disputed 2,737.00, S&S
+3,644,129.48, 136,122 seats).
 
 ## Investigations
 
@@ -268,12 +276,12 @@ outside Stripe or by a charge the matcher could not tie to them. Which is not es
 
 | Year of transfer | Transfers | Holding a seat | Superseded | No root | Money moved (realized) | S&S share moved | Days after purchase: Q1 / median / Q3 (max) | Weekday 09:00-17:59 NY | To an event in a different year |
 |---|---|---|---|---|---|---|---|---|---|
-| 2022 | 1,902 | 1,742 | 148 | 12 | 114,358.75 | 43,494.19 | 12 / 23 / 43 (1,043) | 73.3% | 165 |
+| 2022 | 1,902 | 1,742 | 148 | 12 | 114,358.75 | 43,442.19 | 12 / 23 / 43 (1,043) | 73.3% | 165 |
 | 2023 | 1,311 | 1,183 | 126 | 2 | 80,953.25 | 30,491.73 | 10 / 22 / 42 (1,131) | 67.2% | 139 |
-| 2024 | 1,474 | 1,344 | 117 | 13 | 90,326.30 | 34,801.34 | 12 / 26 / 49 (647) | 63.8% | 114 |
+| 2024 | 1,474 | 1,344 | 117 | 13 | 90,326.30 | 34,747.34 | 12 / 26 / 49 (647) | 63.8% | 114 |
 | 2025 | 1,865 | 1,738 | 124 | 3 | 115,574.00 | 44,178.48 | 11 / 25 / 43 (753) | 68.6% | 154 |
 | 2026 | 1,221 | 1,120 | 99 | 2 | 74,608.00 | 28,558.17 | 10 / 22 / 41 (333) | 63.6% | 49 |
-| All | 7,773 | 7,127 | 614 | 32 | 475,820.30 | 181,523.92 | 11 / 24 / 44 (1,131) | 67.9% | 621 |
+| All | 7,773 | 7,127 | 614 | 32 | 475,820.30 | 181,417.92 | 11 / 24 / 44 (1,131) | 67.9% | 621 |
 
 No transfer predates 2022. The minimum gap is 0 days every year. The different-year count compares the new
 event's year with the root's earliest event year; 200 transfers could not be compared because one of the two
@@ -349,15 +357,15 @@ the ticket checkout. What they paid for is not established.
 | 2016 | 3 | 63 | 1,291.90 | 100% | 100% |
 | 2017 | 40 | 935 | 24,274.58 | 100% | 100% |
 | 2018 | 127 | 1,970 | 50,649.86 | 100% | 100% |
-| 2019 | 300 | 2,944 | 72,221.74 | 91.2% | 90.8% |
+| 2019 | 300 | 2,944 | 72,195.74 | 91.2% | 90.8% |
 | 2020 | 25 | 172 | 4,383.20 | 7.0% | 6.4% |
-| 2021 | 12 | 21 | 529.49 | 0.2% | 0.2% |
+| 2021 | 12 | 21 | 469.49 | 0.2% | 0.2% |
 | 2022 | 14 | 32 | 418.96 | 0.1% | 0.1% |
 | 2023 | 79 | 216 | 21,826.99 | 1.1% | 4.1% |
 | 2024 | 65 | 465 | 41,519.19 | 2.3% | 7.4% |
 | 2025 | 161 | 1,363 | 44,884.11 | 3.9% | 4.9% |
 | 2026 | 5 | 6 | 504.32 | 0.0% | 0.1% |
-| All | 831 | 8,187 | 262,504.33 | 6.0% | 7.2% |
+| All | 831 | 8,187 | 262,418.33 | 6.0% | 7.2% |
 
 Undated events are outside the booking curve and pace figures. Before 2020 that is nearly everything (spec §9,
 confirmed). In 2023-2024 undated events carry far more S&S per seat than dated ones, which suggests private
@@ -390,8 +398,25 @@ established: the archive has no redemption record and no legacy order records a 
 - How money follows a transfer on the new platform.
 - Peer benchmarks on real data (no metros loaded).
 - Contribution after ad spend on real data (no spend loaded).
-- The hourly job's cost since the hourly selector widened to include the economics models.
+- The hourly job's cost with the economics models (`core_stripe_transactions` to `core_bookings`) in the hourly build.
+- The dispute figures above against Stripe by hand: they are measured, not hand-checked.
 - Chains of more than five transfers (none exist today).
+
+## Known limits
+
+- **A refunded-status order with a lost dispute is deducted twice.** When a legacy order's status is
+  `refunded` but Stripe holds no refund for it, each item refunds its own realized revenue (the status
+  fallback); if the order also has a lost dispute, the disputed money is deducted again. One order today:
+  woo-238645, 69.00 refunded by status and 69.00 disputed, net distributable -86.30, S&S share -34.52 (27.60
+  lower than a single deduction would give). Not changed: which of the two should give way is not decided.
+- **Partially refunded multi-seat legacy bookings still count every seat.** A legacy booking has no ticket
+  status, so it gives up its seats only when its refund reaches its whole realized revenue; a partial refund
+  of a two-seat line leaves both seats counted.
+- **`has_ad_spend_data` reads partial coverage as complete.** It is true when any platform has spend on a
+  day of the selling window, so a day with Meta spend loaded and Google spend missing counts as covered.
+- **The legacy surrogate customer key does not conceal the account id.** `woo-cust-<hash>` is a hash of the
+  WooCommerce customer id, a small integer; anyone who can enumerate ids can recover which account a key
+  belongs to.
 
 ## Stripe in the daily job
 
@@ -399,9 +424,5 @@ The Stripe history is loaded and its watermark set, so `infra/setup.sh` and `job
 the daily job's `SOURCES` to `cms,stripe,gsc,spend`, which loads Stripe incrementally. A missing watermark
 makes the Stripe steps fail loudly (`no Stripe watermark for <entity>: run once with --full to load
 history`) rather than reload the whole account history; the history load is a deliberate one-off,
-`python -m loaders run --sources stripe --full`. **The deployed job still has the old value
-(`cms,gsc,spend`)** until someone re-runs the setup script or updates the job:
-
-```bash
-gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'
-```
+`python -m loaders run --sources stripe --full`. No daily job is deployed yet: `infra/setup.sh` has never
+been run (`docs/handoff.md`), so the job it will create starts with `SOURCES=cms,stripe,gsc,spend`.

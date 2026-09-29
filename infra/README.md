@@ -1,8 +1,9 @@
 # Infra
 
-`setup.sh` is idempotent. Run it from Cloud Shell (`gcloud` and `bq` on the dev laptop are broken). Re-running
-it is safe: it never re-pauses or resumes existing schedulers (it only converges their schedule, target and
-empty body) and never recreates the transfer.
+`setup.sh` has not been run yet (`docs/handoff.md`): its service account, bucket, secret placeholders, Cloud
+Run jobs and schedulers do not exist. It is idempotent. Run it from Cloud Shell (`gcloud` and `bq` on the dev
+laptop are broken). Re-running it is safe: it never re-pauses or resumes existing schedulers (it only
+converges their schedule, target and empty body) and never recreates the transfer.
 
 What it creates: the service account and its IAM (BigQuery roles per dataset; Secret Manager access granted
 per secret on `stripe-restricted-key`, `cms-export-token` and `slack-ads-sync-bot-token`, never project-wide;
@@ -11,7 +12,7 @@ Cloud Run jobs from one image, each with a fixed mode and `--max-retries 0`:
 
 | Job | Env | Scheduler (created PAUSED) |
 |---|---|---|
-| `sns-analytics-daily` | `MODE=daily`, `SOURCES=cms,stripe,gsc,spend` (a job deployed before Stripe was added still has `cms,gsc,spend`; in a fresh project the Stripe steps fail until the history is loaded once with `python -m loaders run --sources stripe --full`; see `docs/runbook.md`) | `sns-analytics-daily`, `0 11 * * *` UTC |
+| `sns-analytics-daily` | `MODE=daily`, `SOURCES=cms,stripe,gsc,spend` (in a fresh project the Stripe steps fail until the history is loaded once with `python -m loaders run --sources stripe --full`; see `docs/runbook.md`) | `sns-analytics-daily`, `0 11 * * *` UTC |
 | `sns-analytics-hourly` | `MODE=hourly` | `sns-analytics-hourly`, `30 0-10,12-23 * * *` UTC |
 
 Schedulers POST an empty body `{}` to `…/jobs/<job>:run` (no overrides).
