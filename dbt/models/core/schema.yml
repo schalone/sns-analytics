@@ -47,7 +47,7 @@ models:
               arguments:
                 values: [cms, woo_products, none]
       - name: seats_sold
-        description: "Plain count of CMS tickets (Active, Paid, Used) plus legacy ticket lines on completed, refunded or processing orders. Use core_event_economics for analysis."
+        description: "Plain count of CMS tickets (Active, Paid, Used) plus legacy ticket lines on completed, refunded or processing orders. It counts ticket lines as sold and does not remove seats later transferred to another class; use core_event_economics.seats_sold for analysis."
 
   - name: core_orders
     columns:
@@ -206,8 +206,9 @@ models:
     description: >
       One row per ticket line of a legacy transfer order: a paid zero-total order with a parent and a ticket
       line with value, created when the legacy site moved a seat to another event. root_order_key is the
-      original paid order (NULL when none is reachable within five steps). Per root, the latest transfers hold
-      seats up to the seats the root bought; the rest are superseded and hold nothing.
+      original paid order (NULL when none is reachable within five steps). A transfer that was itself transferred
+      is superseded. Per root, the other transfers hold seats latest first up to the seats the root bought (all
+      their seats when the root has no ticket lines); the rest are superseded and hold nothing.
     columns:
       - name: order_item_key
         data_tests: [unique, not_null]

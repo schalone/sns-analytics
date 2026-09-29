@@ -1,0 +1,34 @@
+version: 2
+
+unit_tests:
+  - name: mart_paid_performance_transfers_add_no_orders
+    description: >
+      A legacy transfer order (is_transfer) is not a purchase: it adds nothing to a campaign's orders, seats or
+      net revenue. sns_share still follows bookings by order, so the money a transfer's booking took from its
+      root order counts wherever the transfer's session is attributed.
+    model: mart_paid_performance
+    given:
+      - input: ref('core_sessions')
+        rows:
+          - {session_key: s1, session_date: 2024-03-01, default_channel_group: Paid Social, campaign: "Spring", source: facebook, gclid: null, google_ads_campaign_id: null}
+          - {session_key: s2, session_date: 2024-03-01, default_channel_group: Paid Social, campaign: "Spring", source: facebook, gclid: null, google_ads_campaign_id: null}
+      - input: ref('core_session_orders')
+        rows:
+          - {order_key: o1, session_key: s1}
+          - {order_key: o2, session_key: s2}
+      - input: ref('core_orders')
+        rows:
+          - {order_key: o1, is_transfer: false, business_date: 2024-03-01, seats: 2, net_revenue: 140.0}
+          - {order_key: o2, is_transfer: true, business_date: 2024-03-01, seats: 1, net_revenue: 0.0}
+      - input: ref('core_bookings')
+        rows:
+          - {booking_key: b1, order_key: o1, sns_share: 27.128}
+          - {booking_key: b2, order_key: o2, sns_share: 27.128}
+      - input: ref('core_ad_spend')
+        rows:
+          - {date: 2024-03-01, platform: meta, campaign_id: null, campaign_name: "Spring", campaign_name_norm: "spring", metro_key: null, spend: 10.0, impressions: 1000, clicks: 20}
+    expect:
+      # Two sessions; only o1 is an order (1 order, 2 seats, 140). sns_share 27.128 + 27.128 = 54.256;
+      # contribution 54.256 - 10 = 44.256.
+      rows:
+        - {date: 2024-03-01, platform: meta, sessions: 2, orders: 1, seats: 2, net_revenue: 140.0, sns_share: 54.256, sns_contribution: 44.256}

@@ -2,6 +2,8 @@
 -- One row per event in either era. CMS events come first; an event that exists only in the legacy
 -- archive is built from its ticket products and keyed woo-ev-<id>. seats_sold here is a plain count
 -- for convenience; core_event_economics (built from bookings) is the authoritative outcome table.
+-- seats_sold counts ticket lines as sold and does not remove seats later transferred to another class;
+-- use core_event_economics.seats_sold.
 --
 -- Legacy-only events, capacity/price fallback. A CMS event keeps its own capacity, falling
 -- back to the archive's ticket-product capacity (matched on wordpress_source_id) when the CMS value

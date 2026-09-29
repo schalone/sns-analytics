@@ -44,6 +44,8 @@
 --                       transfer takes from it. list_value = moved realized revenue + moved discount,
 --                       service_fee = 0, fee_source = the root's. net_distributable and both shares are
 --                       recomputed from the moved amounts. The transfer order's own line value is not revenue.
+--                       When the root has no ticket lines it gives up nothing: the transfer holds its seats
+--                       with all money 0 and fee_source 'none'.
 --   transfer_superseded a transfer whose seat moved on again: no seat, no money, fee_source 'none', cancelled.
 --   unpaid_zero_total   a transfer with no root, or a zero-total order with ticket value and no parent: kept
 --                       exactly as any zero-total order (line value as realized revenue, no fee).
@@ -272,7 +274,8 @@ transferred as (
     coalesce(m.realized_revenue, 0) as realized_revenue,
     coalesce(m.refunded_amount, 0) as refunded_amount,
     coalesce(m.processing_fee, 0) as processing_fee,
-    if(t.seats_held > 0, rf.fee_source, 'none') as fee_source,
+    -- a root with no ticket lines gives up nothing, so its transfers hold seats with no money and no fee
+    if(t.seats_held > 0 and m.order_item_key is not null, rf.fee_source, 'none') as fee_source,
     t.root_order_key as transfer_root_order_key,
     t.seats_held = 0
       or (coalesce(m.realized_revenue, 0) > 0 and coalesce(m.refunded_amount, 0) >= coalesce(m.realized_revenue, 0) - 0.005)

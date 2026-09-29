@@ -69,7 +69,9 @@ models:
       `google_ads_enabled` var the same way `core_ad_spend` is; while it is false this mart
       produces zero Google rows (and zero rows overall today, since `core_ad_spend` has no spend
       rows until the CSV drop and/or Google Ads transfer have real data). `roas` and `cpa` are
-      ratios and are legitimately NULL (no spend, or no orders) rather than 0 or an error.
+      ratios and are legitimately NULL (no spend, or no orders) rather than 0 or an error. Legacy transfer
+      orders (core_orders.is_transfer) add nothing to orders, seats or net_revenue; their bookings' moved
+      money still counts in sns_share.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

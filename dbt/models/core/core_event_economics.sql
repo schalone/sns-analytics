@@ -6,8 +6,10 @@
 with b as (
   select event_key,
     sum(net_seats) as seats_sold,
-    count(*) as bookings,
-    count(distinct customer_hash) as customers,
+    -- only rows that hold seats: a root line that gave up every seat to a transfer, and a superseded
+    -- transfer, carry seats = 0 and no money; a purchase cancelled by refund still holds its seat row
+    countif(seats > 0) as bookings,
+    count(distinct if(seats > 0, customer_hash, null)) as customers,
     sum(realized_revenue) as realized_revenue,
     sum(refunded_amount) as refunded_amount,
     sum(processing_fee) as processing_fee,

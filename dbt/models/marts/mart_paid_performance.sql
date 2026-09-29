@@ -36,7 +36,10 @@ social_sessions as (
 orders_by_session as (
   -- Bookings carry no session/date of their own; aggregated to one row per order_key first so this
   -- join can never fan the order out and change the existing orders/seats/net_revenue sums.
-  select so.session_key, o.business_date, count(*) as orders, sum(o.seats) as seats, sum(o.net_revenue) as net_revenue,
+  -- A legacy transfer order (is_transfer) is not a purchase: it adds no order, seat or revenue, while its
+  -- booking's sns_share (money moved from the root order) still counts, by order, as in mart_daily_kpis.
+  select so.session_key, o.business_date, countif(not o.is_transfer) as orders, sum(if(o.is_transfer, 0, o.seats)) as seats,
+    sum(if(o.is_transfer, 0, o.net_revenue)) as net_revenue,
     sum(coalesce(bk.sns_share, 0)) as sns_share
   from {{ ref('core_session_orders') }} so
   join {{ ref('core_orders') }} o using (order_key)
