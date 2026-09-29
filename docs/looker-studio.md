@@ -50,6 +50,13 @@ One row per `business_date` × `platform_era` × `channel_group` × `metro_key`.
   refunds, after Stripe fees, before instructor materials — the 60/40 split is applied after Stripe fees
   and instructor materials are never subtracted from any S&S figure); `sns_share` is 40% of
   `net_distributable`.
+- **Transferred seats (legacy).** When a customer moved a seat to another class, the legacy site created a
+  zero-total "transfer" order. It is not a purchase: `orders`, `ticket_orders`, `seats`, gross/net revenue,
+  new customers and `channel_ticket_orders` (the CVR numerator) exclude it. The seat and the money paid for
+  it move to the new class, so `net_distributable` and `sns_share` show that money on the transfer's own date
+  and metro row, and the original order keeps only what stayed. In the core tables, `core_orders.is_transfer`
+  marks these orders, and `core_bookings.booking_kind` (`purchase`, `transfer_in`, `transfer_superseded`,
+  `unpaid_zero_total`) and `seats_transferred_out` show which bookings gave up or received a seat.
 - **Sessions and engaged sessions** sit only on `metro_key IS NULL` rows (GA4 has no metro). Summing them
   over all rows gives the same answer as summing the null-metro rows.
 - **CVR** must use the per-channel total of ticket orders, not the null-metro row's own `ticket_orders`.

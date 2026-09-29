@@ -164,6 +164,29 @@ dimension and whenever `query` is requested. Measured for 2026-06-23..2026-09-13
 `raw_gsc.page_device_country` keeps its 2025-06-04..2026-09-24 backfill but is no longer loaded or
 modelled (that combination lost more than half the clicks).
 
+## Transferred seats (legacy)
+
+The legacy site moved a seat to another class by creating a new order with a total of zero, one per seat,
+whose parent is the original paid order. The instructor of the class attended earns the money, so the seat
+and the money paid for it follow the transfer:
+
+- `core_seat_transfers` lists every ticket line of a transfer order with its root (the original paid order,
+  followed up through earlier transfers, at most five steps). Per root, the latest transfers hold seats up to
+  the number the root bought; earlier ones whose seat moved on again are superseded.
+- In `core_order_item_economics` and `core_bookings`, `booking_kind` says what a row is: `purchase`,
+  `transfer_in` (the seat on the new class from the transfer date, carrying the root's per-seat realized
+  revenue, refund and Stripe fee), `transfer_superseded` (no seat, no money), or `unpaid_zero_total` (a
+  zero-total order with ticket value and no paid ancestor, kept at its line value with no fee). On the root's
+  row, `seats_transferred_out` counts the seats that moved away and `seats` what stayed; its money is scaled
+  down to match, so nothing is counted twice.
+- In `core_orders`, `is_transfer` marks a transfer order with a root (`transfer_root_order_key`). It belongs
+  to the root's customer (`identity_source = 'transfer_parent'`), is never a first order, and is left out of
+  customer order counts.
+- `mart_daily_kpis` order, ticket-order and seat counts, gross and net revenue and new customers exclude
+  transfer orders; `net_distributable` and `sns_share` include the moved money on the transfer's own row.
+- Tests: `assert_transfers_conserve_money` (per root, money is unchanged by transfers) and
+  `assert_transfer_seats_within_purchase` (held plus remaining seats equal seats bought).
+
 ## Rebuilding a model and its children
 
 ```bash
@@ -247,7 +270,7 @@ A green `dbt build` today shows exactly these warnings; any error, or any other 
 | `assert_raw_cms_orders_fresh` | nothing was loaded into `raw_cms.orders` in the last day (an empty table warns) | the CMS loader runs at least daily |
 | `assert_reconciliation_variance_recent` | recent bronco days of `mart_orders_reconciliation` are flagged: Stripe already carries bronco-era charge activity but there are no bronco CMS orders yet, so `orders_charged_amount` is 0 against a real `stripe_charged_amount` | the first CMS backfill lands bronco orders (handoff item 8) |
 | `assert_stripe_charges_carry_a_join_key` | 2016 falls under the 97% join-key threshold: 204 of that year's 242 charges (about 84%) carry no `checkout_session_key`/`order_number`/`woo_order_id`/`order_ref`/`adhoc_charge_key` at all; every year from 2017 on is at or above 99.7% | never on its own -- 2016 is fixed archive data, not a loading gap; would need a manual reconciliation of that year's Stripe export against the archive |
-| `assert_identity_coverage` | six (year, era) buckets, all `legacy_event_tickets`, fall under the 98% resolved-identity bar: 2019 (96.55%), 2020 (97.58%), 2022 (97.35%), 2023 (97.00%), 2024 (95.99%), 2025 (96.88%). The unresolved remainder has no Stripe charge to take a customer hash from (see `core_customer_identity`'s `stripe` priority) | never on its own -- same fixed archive data as above |
+| `assert_identity_coverage` | two (year, era) buckets, both `legacy_event_tickets`, fall under the 98% resolved-identity bar: 2019 (96.55%) and 2020 (97.58%). The unresolved remainder has no Stripe charge to take a customer hash from (see `core_customer_identity`'s `stripe` priority). Transfer orders take their root order's customer, which cleared 2022-2025 | never on its own -- same fixed archive data as above |
 
 Warn-severity tests that pass today but will warn if their condition appears: `assert_core_sessions_fresh`,
 `assert_raw_gsc_fresh`, `assert_search_page_totals_match_property_totals`, the `core_tickets.event_key`
