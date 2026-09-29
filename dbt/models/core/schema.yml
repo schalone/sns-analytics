@@ -245,6 +245,22 @@ models:
           - accepted_values:
               arguments:
                 values: [legacy_event_tickets, bronco]
+      - name: booking_kind
+        description: >
+          purchase: an ordinary line (on a transfer's root, seats and money are what stayed after seats moved
+          away). transfer_in: a legacy transfer booking holding a moved seat and the money paid for it, on the
+          new event from the transfer date. transfer_superseded: a transfer whose seat moved on again; no seat,
+          no money. unpaid_zero_total: a transfer with no paid ancestor, or a zero-total order with ticket
+          value and no parent; line value kept as realized revenue with no fee, nature unknown.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [purchase, transfer_in, transfer_superseded, unpaid_zero_total]
+      - name: seats_transferred_out
+        description: Seats of a root line given up to transfer bookings. seats = seats_purchased - seats_transferred_out on purchase lines.
+      - name: transfer_root_order_key
+        description: On transfer_in and transfer_superseded rows, the original paid order the seat came from; NULL otherwise.
       - name: realized_revenue
         data_tests: [not_null]
       # processing_fee can be negative: Stripe returns fees on some refunds, though none exist in
@@ -254,6 +270,22 @@ models:
   - name: core_bookings
     description: "One row per ticket order item. sns_share is 40% of realized revenue less refunds less Stripe fees. Instructor materials are never subtracted."
     columns:
+      - name: booking_kind
+        description: >
+          purchase: an ordinary line (on a transfer's root, seats and money are what stayed after seats moved
+          away). transfer_in: a legacy transfer booking holding a moved seat and the money paid for it, on the
+          new event from the transfer date. transfer_superseded: a transfer whose seat moved on again; no seat,
+          no money. unpaid_zero_total: a transfer with no paid ancestor, or a zero-total order with ticket
+          value and no parent; line value kept as realized revenue with no fee, nature unknown.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [purchase, transfer_in, transfer_superseded, unpaid_zero_total]
+      - name: seats_transferred_out
+        description: Seats of a root line given up to transfer bookings. seats = seats_purchased - seats_transferred_out on purchase lines.
+      - name: transfer_root_order_key
+        description: On transfer_in and transfer_superseded rows, the original paid order the seat came from; NULL otherwise.
       - name: booking_key
         data_tests: [unique, not_null]
       - name: fee_source

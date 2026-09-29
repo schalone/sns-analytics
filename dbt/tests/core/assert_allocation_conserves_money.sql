@@ -1,9 +1,15 @@
 -- What was split across an order's items must add back up to the order-level amount.
+-- A legacy seat transfer moves money from the root order's lines to the transfer bookings, so items are
+-- grouped by family: a rooted transfer line (transfer_in or transfer_superseded) counts with its root
+-- order (transfer_root_order_key), every other item with its own order. Without transfers a family is
+-- exactly one order.
 -- CMS refunds count only when status = 'Succeeded' (per core_orders.sql's own refund-status ruling).
 with items as (
-  select order_key, source_system, sum(discount) as discount, sum(service_fee) as service_fee,
-    sum(refunded_amount) as refunded, sum(processing_fee) as fee, sum(realized_revenue) as realized_revenue,
-    any_value(fee_source) as fee_source
+  select coalesce(transfer_root_order_key, order_key) as order_key, source_system, sum(discount) as discount,
+    sum(service_fee) as service_fee, sum(refunded_amount) as refunded, sum(processing_fee) as fee,
+    sum(realized_revenue) as realized_revenue,
+    -- every line of one order shares its fee_source; a superseded transfer line carries 'none'
+    if(countif(fee_source = 'actual') > 0, 'actual', any_value(fee_source)) as fee_source
   from {{ ref('core_order_item_economics') }}
   group by 1, 2
 ),

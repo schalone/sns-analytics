@@ -1,5 +1,8 @@
 {{ config(tags=['hourly']) }}
 -- The economics fact: one row per ticket order item (order x event), both eras.
+-- booking_kind, seats_purchased, seats_transferred_out and transfer_root_order_key come from
+-- core_order_item_economics: a legacy transfer booking sits on the new event with the seat and the money
+-- moved from its root order; the root's booking keeps only the seats that stayed.
 select
   i.order_item_key as booking_key, i.order_key, i.event_key,
   ci.customer_hash, coalesce(ci.identity_source, 'unresolved') as identity_source,
@@ -8,6 +11,7 @@ select
   least(i.purchase_date, coalesce(e.event_date, i.purchase_date)) as sale_date,
   date_diff(e.event_date, i.purchase_date, day) as days_before_event,
   i.seats, if(i.is_cancelled, 0, i.seats) as net_seats,
+  i.booking_kind, i.seats_purchased, i.seats_transferred_out, i.transfer_root_order_key,
   i.list_value, i.discount, i.service_fee, i.realized_revenue, i.refunded_amount, i.processing_fee, i.fee_source,
   i.net_distributable, i.sns_share, i.instructor_share, i.is_cancelled
 from {{ ref('core_order_item_economics') }} i
