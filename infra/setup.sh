@@ -56,8 +56,9 @@ fi
 
 echo "## Cloud Run jobs (one per mode; MODE fixed in the job, no overrides, no retries)"
 # Two jobs from the same image, so a scheduler can never override the mode and a failed run is never retried
-# into an overlap with the next one. The daily job's SOURCES includes stripe: the full Stripe history is loaded
-# and its watermark set, so each daily run loads Stripe incrementally.
+# into an overlap with the next one. The daily job's SOURCES includes stripe, loaded incrementally from its
+# watermark. With no watermark (a fresh project) the Stripe steps fail rather than reload the whole history;
+# load it once, deliberately, with `python -m loaders run --sources stripe --full`.
 # env lists use gcloud's alternate delimiter syntax (^;^) because SOURCES itself contains commas
 COMMON_ENV="CMS_BASE_URL=https://www.sipandscript.com;GCP_PROJECT=$PROJECT;SLACK_CHANNEL=C0C459A46ET;LOADERS_SUMMARY_FILE=/tmp/loaders-summary.txt"
 JOB_SECRETS="STRIPE_RESTRICTED_KEY=stripe-restricted-key:latest,CMS_EXPORT_TOKEN=cms-export-token:latest,SLACK_BOT_TOKEN=slack-ads-sync-bot-token:latest"

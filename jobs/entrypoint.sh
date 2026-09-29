@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # One Cloud Run job per mode, MODE fixed in the job's env (sns-analytics-daily: MODE=daily,
 # sns-analytics-hourly: MODE=hourly). Loaders never abort the run; dbt builds on whatever loaded.
-#   daily : loaders for $SOURCES (default cms,stripe,gsc,spend; the Stripe history is loaded and its watermark
-#           set, so each run loads Stripe incrementally), then the whole dbt project.
+#   daily : loaders for $SOURCES (default cms,stripe,gsc,spend; Stripe loads incrementally from its watermark,
+#           and with no watermark its steps fail rather than reload history: the history load is a
+#           deliberate one-off `python -m loaders run --sources stripe --full`), then the whole dbt project.
 #   hourly: the CMS loader only, then `dbt build --selector hourly` (CMS-derived models with their staging
 #           ancestors and tests, never the GA4-backed session models).
 set -uo pipefail

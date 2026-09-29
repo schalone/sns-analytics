@@ -11,7 +11,7 @@ Cloud Run jobs from one image, each with a fixed mode and `--max-retries 0`:
 
 | Job | Env | Scheduler (created PAUSED) |
 |---|---|---|
-| `sns-analytics-daily` | `MODE=daily`, `SOURCES=cms,stripe,gsc,spend` (a job deployed before Stripe was added still has `cms,gsc,spend`; see `docs/runbook.md`) | `sns-analytics-daily`, `0 11 * * *` UTC |
+| `sns-analytics-daily` | `MODE=daily`, `SOURCES=cms,stripe,gsc,spend` (a job deployed before Stripe was added still has `cms,gsc,spend`; in a fresh project the Stripe steps fail until the history is loaded once with `python -m loaders run --sources stripe --full`; see `docs/runbook.md`) | `sns-analytics-daily`, `0 11 * * *` UTC |
 | `sns-analytics-hourly` | `MODE=hourly` | `sns-analytics-hourly`, `30 0-10,12-23 * * *` UTC |
 
 Schedulers POST an empty body `{}` to `…/jobs/<job>:run` (no overrides).

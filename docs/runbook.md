@@ -45,9 +45,10 @@ python -m loaders run --sources cms,stripe,gsc,spend [--full] [--mode daily|hour
 ```
 
 - `--sources` takes a comma list; the CLI's own default is all four (`cms,stripe,gsc,spend`), so name
-  the sources explicitly. The Stripe history is loaded and its watermark set, so `stripe` without
-  `--full` loads only what is new. Never pass `--full` with `stripe` unless the whole account history
-  must be reloaded (see below).
+  the sources explicitly. `stripe` without `--full` loads incrementally from its watermark. If a Stripe
+  entity has **no** watermark, its step fails with `no Stripe watermark for <entity>: run once with --full
+  to load history` and Stripe is not called; it never reloads the history by itself. The history load is
+  a deliberate one-off: `python -m loaders run --sources stripe --full` (see below for what that pages).
 - `--full` ignores the watermark for every selected source and reloads its full history: CMS
   everything; **Stripe pages the whole account history** (every balance transaction, refund, dispute and
   payout since the account opened, not only since the 2026-06-19 launch); Search Console 480 days back;
@@ -72,8 +73,10 @@ retried into the next one.
 | `sns-analytics-daily` (`MODE=daily`) | `0 11 * * *` | `python -m loaders run --sources "$SOURCES" --mode daily`; `SOURCES` defaults to `cms,stripe,gsc,spend` and is set explicitly on the job by `infra/setup.sh` | `dbt build --target prod` (the whole project) |
 | `sns-analytics-hourly` (`MODE=hourly`) | `30 0-10,12-23 * * *` (skips 11:30, the hour of the daily build, which is a superset) | `python -m loaders run --sources cms --mode hourly` | `dbt build --selector hourly --target prod` |
 
-`stripe` is in the daily job's `SOURCES`: the full Stripe history has been loaded and its watermark set,
-so each daily run loads only new Stripe activity. **The deployed job still has the old value
+`stripe` is in the daily job's `SOURCES`: each daily run loads Stripe incrementally from its watermark. If
+the watermark is missing (a fresh project, or a reset of `ops.load_state`), the Stripe steps fail loudly
+(`no Stripe watermark for <entity>: run once with --full to load history`) rather than reload the whole
+account history; load the history once, deliberately, with `python -m loaders run --sources stripe --full`. **The deployed job still has the old value
 (`cms,gsc,spend`)** until someone re-runs `infra/setup.sh` or updates the job directly:
 
 ```bash
@@ -151,7 +154,10 @@ delete from ops.load_state where source = 'gsc' and entity = 'gsc.page.www';    
 ```
 
 **What a reset causes:** with no watermark row, the next incremental run of that source behaves as a full
-backfill for that entity only (for Stripe: the whole account history). That re-fetches and re-appends rows
+backfill for that entity only. Stripe is the exception: with no watermark its incremental step fails
+(`no Stripe watermark for <entity>: run once with --full to load history`) and fetches nothing, so after
+resetting a Stripe entity run `python -m loaders run --sources stripe --full` deliberately (it pages the
+whole account history for every Stripe entity). That re-fetches and re-appends rows
 already loaded; staging dedupes to the latest row per `key`, but it costs API quota, load time and raw
 storage. Check `ops.run_log` before deleting a watermark: most failures do not need a reset.
 

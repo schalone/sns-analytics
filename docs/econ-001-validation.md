@@ -379,7 +379,10 @@ established: the archive has no redemption record and no legacy order records a 
 ## Stripe in the daily job
 
 The Stripe history is loaded and its watermark set, so `infra/setup.sh` and `jobs/entrypoint.sh` now default
-the daily job's `SOURCES` to `cms,stripe,gsc,spend`. **The deployed job still has the old value
+the daily job's `SOURCES` to `cms,stripe,gsc,spend`, which loads Stripe incrementally. A missing watermark
+makes the Stripe steps fail loudly (`no Stripe watermark for <entity>: run once with --full to load
+history`) rather than reload the whole account history; the history load is a deliberate one-off,
+`python -m loaders run --sources stripe --full`. **The deployed job still has the old value
 (`cms,gsc,spend`)** until someone re-runs the setup script or updates the job:
 
 ```bash

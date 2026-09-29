@@ -125,7 +125,9 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
    that plan**; until it lands, `core_stripe_transactions.order_key` is NULL on every row and
    `mart.mart_orders_reconciliation` compares day totals only. The Stripe history is now loaded and its
    watermark set, so `infra/setup.sh` and `jobs/entrypoint.sh` default the daily job to
-   `SOURCES=cms,stripe,gsc,spend`. **A daily job deployed earlier still has `SOURCES=cms,gsc,spend`** and
+   `SOURCES=cms,stripe,gsc,spend`, which loads Stripe incrementally. If the watermark is ever missing, the
+   Stripe steps fail (`no Stripe watermark for <entity>: run once with --full to load history`) instead of
+   reloading the history; the history load is a deliberate one-off `python -m loaders run --sources stripe --full`. **A daily job deployed earlier still has `SOURCES=cms,gsc,spend`** and
    does not load Stripe until the setup script is re-run or the job is updated:
    `gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'`.
    Verify (once that plan reports done): `mart.mart_orders_reconciliation` has recent rows with
