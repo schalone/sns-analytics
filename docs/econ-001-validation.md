@@ -7,7 +7,8 @@ commits that follow it on `feat/phase-one`.
 **Where these figures come from.** Every figure below was queried from a build in the `dev_flock_*`
 datasets (`dev_flock_staging`, `dev_flock_core`, `dev_flock_mart`, `dev_flock_ops`), which read the real raw
 and archive datasets. The production `staging`, `core`, `mart` and `ops` datasets have not been rebuilt with
-these models.
+these models. `dev_flock_core` also holds a stale table `orders_flag_transfers__dbt_tmp214157898899`, left
+over from an interrupted build; no model reads it.
 
 **Data available.** The legacy WooCommerce archive (2016 to 2026-06-19) and the full Stripe history are
 loaded. The new platform's CMS tables are empty (no bronco orders, no metros, no CMS events) and no ad spend
@@ -75,7 +76,7 @@ The booking counts no seat (`net_seats` 0, cancelled).
 ### woo-373065: a root order that gave one seat to a transfer
 
 Business date 2025-03-14, one line of 2 seats at 75.00, 150.00 paid, no refund. In the archive, order
-466389 (total 0, parent 373065, completed, not itself a parent) moved one seat to event woo-ev-440181.
+woo-466389 (total 0, parent woo-373065, completed, not itself a parent) moved one seat to event woo-ev-440181.
 Stripe has one charge, on the root. One of 14 such orders in 2025.
 
 | Figure | From Stripe | Per seat, by hand | Root booking (woo-li-97913, woo-ev-355204) | Transfer booking (woo-li-117820, woo-ev-440181, `transfer_in`) | Sum | Difference |
@@ -133,8 +134,8 @@ Event date 2024-03-21, capacity 17.
 | First sale (days before) | 2024-01-22: 59 | 59 |
 | Sellout (days before) | 2024-03-19: 2 | 2 |
 
-The transferred seats by hand: two came from root order 239448 (140.00 for 2 seats of another event, so
-70.00 each), and one from root order 247662 (65.00 for 1 seat). Root 247662 moved its single seat twice: first
+The transferred seats by hand: two came from root order woo-239448 (140.00 for 2 seats of another event, so
+70.00 each), and one from root order woo-247662 (65.00 for 1 seat). Root woo-247662 moved its single seat twice: first
 to another event (2024-02-28), then to this one (2024-03-11); the later transfer holds the seat and the earlier
 one is superseded. The model agrees on each of the three: roots woo-239448, woo-239448, woo-247662, 70.00,
 70.00, 65.00, dated 2024-03-11.
@@ -166,7 +167,10 @@ year). 2026 runs to the end of the legacy era, 2026-06-18.
 | All | 9,633,384.43 | 3,645,224.28 | 136,122 | 2,889 of 12,045 |
 
 "of N" counts dated legacy events that sold at least one seat. No legacy event before 2020 has an event date.
-Realized revenue includes the 34,293.50 carried by `unpaid_zero_total` bookings (see below).
+Realized revenue and S&S share include 32,153.50 of zero-total orders with no parent and 2,140.00 of transfer
+orders that never reach a paid order, 34,293.50 in all, labelled `booking_kind = 'unpaid_zero_total'`. Their
+nature is not established (see "Zero-total orders with ticket value and no paid origin" below); exclude them
+with `booking_kind != 'unpaid_zero_total'`.
 
 ## Coverage
 
@@ -208,10 +212,10 @@ Bookings vs `core_orders` for the new platform could not be compared: no bronco 
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
 | 1 | One query over `mart_event_performance` and `core_event_daily` answers every milestone question for a dated event | Cannot be evaluated yet | The query runs and, for woo-ev-269869, returns seats, money, shares, pace and the curve, all matching the hand count. Metro, category, peer benchmarks and contribution after ad spend are null because no CMS dimensions and no spend are loaded. |
-| 2 | At least 98% of card-paid bookings in both eras carry an actual Stripe fee | Met for legacy; cannot be evaluated yet for bronco | Legacy: the lowest year from 2019 is 99.81% (2019), and only 14 legacy bookings in all use the estimate. No bronco booking exists. |
+| 2 | At least 98% of card-paid bookings in both eras carry an actual Stripe fee | Cannot be evaluated yet | No bronco booking exists. Legacy era: every year from 2019 is at least 99.81% (the lowest, 2019), and only 14 legacy bookings in all use the estimated fee. |
 | 3 | At least 98% of orders from 2019 resolve to a customer, and cross-era customers are one row | Not met | 2019: 96.55%, 2020: 97.58% (every later year is above 99%). The shortfall is guest orders with no Stripe charge: 67 of 2019's 70 and all 36 of 2020's unresolved orders have gross revenue 0. It is fixed archive data. The cross-era half cannot be evaluated: no bronco customer exists. |
 | 4 | No email, name, phone, street address or card detail in any written dataset | Met | `assert_no_pii_columns` passes over the staging, core, mart and ops datasets (two gift-card columns, an amount and a record GUID, match the pattern through "card" and are exempt by exact name); `assert_no_email_in_raw_stripe` passes. Billing city, state and ZIP are stored on orders; they are not on the criterion's list. |
-| 5 | The worked order and worked event tests pass | Met for legacy; cannot be evaluated yet for bronco | `assert_worked_order` (three legacy orders) and `assert_worked_event` (two events) pass. The spec asks for a bronco order; `assert_worked_bronco_order_pinned` will warn once a bronco booking is two days old until one is checked and pinned. |
+| 5 | The worked order and worked event tests pass | Cannot be evaluated yet | The spec asks for a bronco worked order and none can be chosen until bronco orders are loaded. Legacy era: `assert_worked_order` (three legacy orders) and `assert_worked_event` (two events) pass; `assert_worked_bronco_order_pinned` will warn once a bronco booking is two days old until one is checked and pinned. |
 
 ## Legacy fee estimate
 
@@ -304,8 +308,21 @@ The 332 orders match the operator's figure. The operator believes they are **lik
 cards; this is not verified. From mid-2023 almost every one carries an order-level discount equal to its whole
 item value while its line still carries that value, a pattern that fits a gift card or voucher recorded as a
 coupon; before 2023 there is no discount on them at all. The model keeps their line value as realized revenue
-with no fee. If they are gift-card redemptions, the same money was also counted when the gift card was sold
-(below), so up to 32,153.50 of legacy realized revenue, and its S&S share, may be counted twice.
+with no fee.
+
+How gift cards are counted today, if these orders are gift-card redemptions (likely, unverified):
+
+- Gift card **sale** lines are not bookings. Event figures, instructor share and S&S share therefore count a
+  seat paid for with a gift card once, at ticket value, when the seat is booked.
+- Order gross revenue (`core_orders.gross_revenue`, the order total) counts the gift card sale when the card
+  is sold, and counts the redemption order at its order total, which is zero.
+- No model adds the two together (`mart_daily_kpis` reports order revenue and booking S&S share as separate
+  columns), so no double count exists in any model today. One would arise only if gift card sale revenue
+  were added to booking revenue.
+
+Not established: that these 332 orders are gift card redemptions at all (the owner said "likely"); how gift
+cards were redeemed in general (card sales, 41,198.25, exceed the value of these orders, 32,153.50); and
+whether an instructor is paid 60% on a seat paid for with a gift card.
 
 ### Stripe charges with no order
 

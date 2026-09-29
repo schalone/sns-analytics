@@ -101,8 +101,10 @@ realized revenue, refund, fee and shares per seat, found through `transfer_root_
 booking keeps only the seats that stayed (`seats_purchased`, `seats_transferred_out`). A transfer that
 was itself moved on again holds no seat and no money (`transfer_superseded`). Transfer orders are not
 purchases and are left out of the KPI mart's order and seat counts. Zero-total orders with ticket value and no paid
-origin (`unpaid_zero_total`, likely tickets bought with gift cards, not established) keep their line
-value with no fee and are labelled so they can be excluded.
+origin (`unpaid_zero_total`, likely tickets bought with gift cards, unverified) keep their line
+value with no fee and are labelled so they can be excluded. Gift card sale lines are not bookings, so a seat
+paid for with a gift card counts once, at ticket value, in event and share figures; order gross revenue
+counts the card when sold and the redemption order at its total of zero; no model adds the two together.
 
 New tables:
 
