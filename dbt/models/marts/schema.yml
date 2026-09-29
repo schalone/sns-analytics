@@ -16,7 +16,7 @@ models:
       numerator for ticket AOV); `aov` is NULL when the cell has no orders. Legacy transfer orders
       (core_orders.is_transfer: a zero-total order that moved a seat to another event) are not purchases and add
       nothing to orders, ticket_orders, seats, gross or net revenue, new_customers or the CVR numerator; the money
-      their bookings took from the original order is in net_distributable and sns_share on the transfer's own row.
+      their bookings took from the original order stays in net_distributable and sns_share on the ORIGINAL order's row (acquisition follows the purchase).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -41,7 +41,7 @@ models:
       - name: net_revenue
         data_tests: [not_null]
       - name: net_distributable
-        description: "Sum of core_bookings.net_distributable (order revenue net of refunds, after Stripe fees) for orders in this cell, aggregated per order first so no other measure changes."
+        description: "Sum of core_bookings.net_distributable (order revenue net of refunds and disputed money, after Stripe fees) for purchase orders in this cell: bookings are aggregated by coalesce(transfer_root_order_key, order_key) first, so a transferred seat's money stays with the original order and no other measure changes."
         data_tests: [not_null]
       - name: sns_share
         description: "40% of net_distributable for orders in this cell, before instructor materials."
@@ -71,7 +71,7 @@ models:
       rows until the CSV drop and/or Google Ads transfer have real data). `roas` and `cpa` are
       ratios and are legitimately NULL (no spend, or no orders) rather than 0 or an error. Legacy transfer
       orders (core_orders.is_transfer) add nothing to orders, seats or net_revenue; their bookings' moved
-      money still counts in sns_share.
+      money counts in sns_share for the campaign of the original (root) order's session.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -96,7 +96,7 @@ models:
       - name: net_revenue
         data_tests: [not_null]
       - name: sns_share
-        description: "S&S 40% share of net_distributable of bookings from sessions of this campaign (order net of refunds, after Stripe fees, before instructor materials)."
+        description: "S&S 40% share of net_distributable of bookings whose purchase order (coalesce(transfer_root_order_key, order_key)) came from sessions of this campaign (net of refunds and disputed money, after Stripe fees, before instructor materials)."
         data_tests: [not_null]
       - name: sns_contribution
         description: "S&S 40% share of bookings from sessions of this campaign, minus the campaign's spend. Session-attributed, so it is not a measure of incrementality. This, not roas, is the decision column."

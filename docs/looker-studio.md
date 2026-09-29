@@ -36,6 +36,11 @@ source yet — it is event-grain, not day-grain, so it needs its own page rather
 above. See its description in `dbt/models/marts/schema.yml` and `core_event_economics` for the columns it
 carries through.
 
+Two columns named "realized" are **net** figures, whatever their names suggest (the names are kept because
+reports already read them): `core_event_daily.cumulative_realized_revenue` and
+`core_customers.lifetime_realized_revenue` are realized revenue less refunds and less disputed (chargeback)
+money. Neither subtracts Stripe fees; `net_distributable` does.
+
 Name the report **"Sip & Script — Website & Sales"** (Create → Report, add both data sources).
 
 ## 2. How `mart_daily_kpis` rows add up — read this first
@@ -47,14 +52,17 @@ One row per `business_date` × `platform_era` × `channel_group` × `metro_key`.
   billing zip's metro), or the `metro_key IS NULL` row when it has none. **Sum them over ALL rows.** Never
   filter a chart that shows orders or revenue to `metro_key IS NULL`: once orders carry metros that
   silently drops them. `net_distributable` and `sns_share` come from `core_bookings` (order revenue net of
-  refunds, after Stripe fees, before instructor materials — the 60/40 split is applied after Stripe fees
-  and instructor materials are never subtracted from any S&S figure); `sns_share` is 40% of
-  `net_distributable`.
+  refunds and of disputed (chargeback) money, after Stripe fees, before instructor materials — the 60/40
+  split is applied after Stripe fees and instructor materials are never subtracted from any S&S figure);
+  `sns_share` is 40% of `net_distributable`.
 - **Transferred seats (legacy).** When a customer moved a seat to another class, the legacy site created a
   zero-total "transfer" order. It is not a purchase: `orders`, `ticket_orders`, `seats`, gross/net revenue,
-  new customers and `channel_ticket_orders` (the CVR numerator) exclude it. The seat and the money paid for
-  it move to the new class, so `net_distributable` and `sns_share` show that money on the transfer's own date
-  and metro row, and the original order keeps only what stayed. In the core tables, `core_orders.is_transfer`
+  new customers and `channel_ticket_orders` (the CVR numerator) exclude it. **Acquisition views follow the
+  purchase:** in this mart and in `mart_paid_performance`, `net_distributable` and `sns_share` are summed by
+  the original (root) order, so a transferred seat's money stays on the original order's date, channel,
+  metro row and campaign; the transfer order's own row carries none of it. Event, instructor and customer
+  views (`core_event_economics`, `mart_event_performance`, `core_event_daily`, `core_customers`) are
+  different: there the seat and its money follow the transfer to the class attended. In the core tables, `core_orders.is_transfer`
   marks these orders, and `core_bookings.booking_kind` (`purchase`, `transfer_in`, `transfer_superseded`,
   `unpaid_zero_total`) and `seats_transferred_out` show which bookings gave up or received a seat.
 - **Sessions and engaged sessions** sit only on `metro_key IS NULL` rows (GA4 has no metro). Summing them
@@ -99,10 +107,11 @@ Data source: `mart.mart_paid_performance`.
 
 `sns_contribution` (`sns_share` minus `spend`) is the decision column, not `roas`: it is S&S's own 40%
 share of the bookings attributed to a campaign's sessions, net of what the campaign cost. It is
-**session-attributed** (whichever campaign's session a booking's order is tied to gets full credit), not a
-measure of incrementality — it does not say what would have booked anyway. `sns_share` itself is 40% of
-`net_distributable` (order revenue net of refunds, after Stripe fees; the split is applied after fees and
-instructor materials are never subtracted).
+**session-attributed** (whichever campaign's session a booking's purchase order is tied to gets full
+credit; a legacy transfer booking counts with its original order, so the campaign that sold the seat keeps
+the credit when the seat later moves), not a measure of incrementality — it does not say what would have
+booked anyway. `sns_share` itself is 40% of `net_distributable` (order revenue net of refunds and disputed
+money, after Stripe fees; the split is applied after fees and instructor materials are never subtracted).
 
 1. **Table by `platform, campaign_name`** — metrics `spend`, `orders`, `sns_contribution`, `roas`, `cpa`
    (per-row ratios, NULL when the denominator is 0; show them per campaign-day row only, or add calculated

@@ -25,8 +25,10 @@
 -- Legacy seat transfers: a transfer order (core_orders.is_transfer) moved a seat of an earlier paid order
 -- to another event. It is not a purchase, so it adds nothing to orders, ticket_orders (and hence the CVR
 -- numerator channel_ticket_orders), seats, gross_revenue, net_revenue, ticket_net_revenue or new_customers.
--- net_distributable and sns_share still sum core_bookings by order, so the money its booking took from the
--- root order is reported on the transfer's own business date and channel/metro row.
+-- Acquisition follows the purchase: net_distributable and sns_share sum core_bookings by
+-- coalesce(transfer_root_order_key, order_key), so a transferred seat's money is reported on the ORIGINAL
+-- order's business date, channel and metro row, never on the transfer order's row (which carries 0). Event,
+-- instructor and customer views are different: there the money follows the seat to the class attended.
 with s as (
   select session_date as business_date, platform_era, default_channel_group as channel_group, cast(null as string) as metro_key,
     count(*) as sessions, countif(engaged) as engaged_sessions
@@ -46,10 +48,11 @@ o as (
   left join {{ ref('core_sessions') }} cs using (session_key)
   left join (select order_key, any_value(event_key) as event_key from {{ ref('core_order_items') }} where item_type = 'ticket' group by order_key) oi using (order_key)
   left join {{ ref('core_events') }} e using (event_key)
-  -- Bookings carry no business_date of their own; aggregated to one row per order_key first so this
-  -- join can never fan the order out and change any existing measure above.
-  left join (select order_key, sum(net_distributable) as net_distributable, sum(sns_share) as sns_share
-             from {{ ref('core_bookings') }} group by order_key) bk using (order_key)
+  -- Bookings carry no business_date of their own; aggregated to one row per purchase order first (a transfer
+  -- booking counts with its root order) so this join can never fan the order out and change any measure above.
+  left join (select coalesce(transfer_root_order_key, order_key) as order_key,
+               sum(net_distributable) as net_distributable, sum(sns_share) as sns_share
+             from {{ ref('core_bookings') }} group by 1) bk using (order_key)
   group by 1, 2, 3, 4
 ),
 oc as (

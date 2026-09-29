@@ -33,10 +33,10 @@ unit_tests:
         rows: select cast(null as date) as date, cast(null as string) as flag from unnest([1]) where false
       - input: ref('core_bookings')
         rows:
-          - {booking_key: bk1, order_key: o2, net_distributable: 54, sns_share: 21.6}
+          - {booking_key: bk1, order_key: o2, transfer_root_order_key: null, net_distributable: 54, sns_share: 21.6}
     expect:
-      # net_distributable/sns_share come from core_bookings aggregated by order_key, so they sit on
-      # whichever row that order's own metro lands on -- here o2's booking lands on the m-dallas row,
+      # net_distributable/sns_share come from core_bookings aggregated by purchase (the order itself here, as
+      # it is no transfer), so they sit on whichever row that order's own metro lands on -- here o2's booking lands on the m-dallas row,
       # the other two rows have no booking and stay 0.
       rows:
         - {metro_key: null, sessions: 2, orders: 1, ticket_orders: 1, channel_ticket_orders: 3, cvr: 1.5, net_distributable: 0, sns_share: 0}
@@ -46,9 +46,11 @@ unit_tests:
   - name: mart_daily_kpis_transfers_add_no_orders
     description: >
       A legacy transfer order (is_transfer) is not a purchase: it adds nothing to orders, ticket_orders, seats,
-      gross or net revenue, new customers or the conversion numerator. The money its booking took from the
-      root order is reported on the transfer's own business date and row: o2 shares o1's date and channel, o3
-      sits alone on a later date.
+      gross or net revenue, new customers or the conversion numerator. Acquisition views follow the purchase:
+      net_distributable and sns_share are summed by coalesce(transfer_root_order_key, order_key), so the money a
+      transfer booking took from its root is reported on the ROOT order's business date, channel and metro row.
+      o1 (03-01, Organic Search) is the root of o2's transfer (dated 03-03, no session); o4 (02-20, no session)
+      is the root of o3's transfer (dated 03-05, no session). The transfer orders' rows still exist and carry 0.
     model: mart_daily_kpis
     given:
       - input: ref('core_sessions')
@@ -57,12 +59,12 @@ unit_tests:
       - input: ref('core_orders')
         rows:
           - {order_key: o1, is_transfer: false, business_date: 2024-03-01, platform_era: legacy_event_tickets, order_type: ticket, seats: 1, gross_revenue: 70.0, net_revenue: 70.0, is_first_order: true, billing_metro_key: null}
-          - {order_key: o2, is_transfer: true, business_date: 2024-03-01, platform_era: legacy_event_tickets, order_type: ticket, seats: 1, gross_revenue: 0.0, net_revenue: 0.0, is_first_order: false, billing_metro_key: null}
+          - {order_key: o2, is_transfer: true, business_date: 2024-03-03, platform_era: legacy_event_tickets, order_type: ticket, seats: 1, gross_revenue: 0.0, net_revenue: 0.0, is_first_order: false, billing_metro_key: null}
           - {order_key: o3, is_transfer: true, business_date: 2024-03-05, platform_era: legacy_event_tickets, order_type: ticket, seats: 1, gross_revenue: 0.0, net_revenue: 0.0, is_first_order: false, billing_metro_key: null}
+          - {order_key: o4, is_transfer: false, business_date: 2024-02-20, platform_era: legacy_event_tickets, order_type: ticket, seats: 1, gross_revenue: 70.0, net_revenue: 70.0, is_first_order: false, billing_metro_key: null}
       - input: ref('core_session_orders')
         rows:
           - {order_key: o1, session_key: s1}
-          - {order_key: o2, session_key: s1}
       - input: ref('core_order_items')
         format: sql
         rows: select cast(null as string) as order_key, cast(null as string) as event_key, cast(null as string) as item_type from unnest([1]) where false
@@ -74,12 +76,16 @@ unit_tests:
         rows: select cast(null as date) as date, cast(null as string) as flag from unnest([1]) where false
       - input: ref('core_bookings')
         rows:
-          - {booking_key: bk1, order_key: o1, net_distributable: 0, sns_share: 0}
-          - {booking_key: bk2, order_key: o2, net_distributable: 67.82, sns_share: 27.128}
-          - {booking_key: bk3, order_key: o3, net_distributable: 67.67, sns_share: 27.068}
+          - {booking_key: bk1, order_key: o1, transfer_root_order_key: null, net_distributable: 0, sns_share: 0}
+          - {booking_key: bk2, order_key: o2, transfer_root_order_key: o1, net_distributable: 67.82, sns_share: 27.128}
+          - {booking_key: bk3, order_key: o3, transfer_root_order_key: o4, net_distributable: 67.67, sns_share: 27.068}
+          - {booking_key: bk4, order_key: o4, transfer_root_order_key: null, net_distributable: 0, sns_share: 0}
     expect:
-      # o1's booking gave its seat and money to o2 (net 0 left on o1); o2's moved money lands on 03-01
-      # with o1, o3's on 03-05, a row that exists only because of the transfer and counts no orders.
+      # By purchase: o1's family = bk1 (0) + bk2 (67.82, 27.128) on 03-01 Organic Search; o4's family = bk4 (0) +
+      # bk3 (67.67, 27.068) on 02-20 Unattributed. The transfer orders' own rows (03-03, 03-05) count no order and
+      # carry no money. Mart total 67.82 + 67.67 = 135.49 = the bookings total; sns 27.128 + 27.068 = 54.196.
       rows:
+        - {business_date: 2024-02-20, channel_group: Unattributed, orders: 1, ticket_orders: 1, seats: 1, gross_revenue: 70.0, net_revenue: 70.0, new_customers: 0, channel_ticket_orders: 1, cvr: null, net_distributable: 67.67, sns_share: 27.068}
         - {business_date: 2024-03-01, channel_group: Organic Search, orders: 1, ticket_orders: 1, seats: 1, gross_revenue: 70.0, net_revenue: 70.0, new_customers: 1, channel_ticket_orders: 1, cvr: 1.0, net_distributable: 67.82, sns_share: 27.128}
-        - {business_date: 2024-03-05, channel_group: Unattributed, orders: 0, ticket_orders: 0, seats: 0, gross_revenue: 0.0, net_revenue: 0.0, new_customers: 0, channel_ticket_orders: 0, cvr: null, net_distributable: 67.67, sns_share: 27.068}
+        - {business_date: 2024-03-03, channel_group: Unattributed, orders: 0, ticket_orders: 0, seats: 0, gross_revenue: 0.0, net_revenue: 0.0, new_customers: 0, channel_ticket_orders: 0, cvr: null, net_distributable: 0, sns_share: 0}
+        - {business_date: 2024-03-05, channel_group: Unattributed, orders: 0, ticket_orders: 0, seats: 0, gross_revenue: 0.0, net_revenue: 0.0, new_customers: 0, channel_ticket_orders: 0, cvr: null, net_distributable: 0, sns_share: 0}

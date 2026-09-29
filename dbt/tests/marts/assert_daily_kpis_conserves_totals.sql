@@ -8,7 +8,9 @@
 -- known negative-total WooCommerce order core_orders drops -- has nothing on the mart side to
 -- conserve against). Legacy transfer orders (is_transfer) are not purchases and the mart counts none of their
 -- orders, seats or revenue, so the order-side truths exclude them; their bookings' moved money stays in the
--- bookings truth, since the mart reports it on the transfer's row. The tolerance scales with the number of distinct business_dates in the mart:
+-- bookings truth, since the mart reports it on the root order's row (a booking's purchase order is
+-- coalesce(transfer_root_order_key, order_key), and it is that order that must exist in core_orders).
+-- The tolerance scales with the number of distinct business_dates in the mart:
 -- many independently-rounded per-order and per-event sums are being added back together here.
 with mart as (
   select sum(sessions) as sessions, sum(orders) as orders, sum(net_revenue) as net_revenue,
@@ -30,7 +32,7 @@ orders_truth as (
 bookings_truth as (
   select sum(b.net_distributable) as net_distributable, sum(b.sns_share) as sns_share
   from {{ ref('core_bookings') }} b
-  where b.order_key in (select order_key from {{ ref('core_orders') }})
+  where coalesce(b.transfer_root_order_key, b.order_key) in (select order_key from {{ ref('core_orders') }})
 )
 select mart.sessions as mart_sessions, sessions_truth.sessions as core_sessions,
   mart.orders as mart_orders, orders_truth.orders as core_orders,
