@@ -30,13 +30,15 @@ Definitions, per ticket booking:
 
 ```
 realized_revenue       = ticket line value + allocated service fee − allocated discount
-net_distributable      = realized_revenue − refunded_amount − processing_fee
+net_distributable      = realized_revenue − refunded_amount − disputed_amount − processing_fee
 sns_share              = 0.40 × net_distributable
 instructor_share       = 0.60 × net_distributable
 sns_contribution       = sns_share − allocated_ad_spend        (event level and above)
 ```
 
 The shares are dbt variables `sns_share_rate: 0.40` and `instructor_share_rate: 0.60`.
+
+`disputed_amount` (added 2026-09-29) is the money Stripe took back through chargebacks the business lost, net of reversals. It is not distributed. A chargeback does not vacate a seat. A refund that failed returns the money and reduces the refunded amount.
 
 **Stated assumptions, to be validated against a hand-worked payout in ECON-001:**
 
@@ -98,7 +100,7 @@ A new module `loaders/stripe_sanitize.py` exposes `sanitize(entity, obj) -> dict
 | dispute | id, object, amount, created, currency, status, reason, charge, payment_intent |
 | payout | id, object, amount, created, arrival_date, currency, status, type, method |
 
-- Metadata allowlist, confirmed against live charges on 2026-09-27 (§4.5): bronco keys `CheckoutSessionKey`, `OrderNumber`, `EventKey`, `TicketCount`, `AdHocChargeGuid`, `Type`; legacy keys `order_id`, `order_key`. Everything else is dropped, including `customer_email`, `customer_name`, `Customer Email`, `Customer Name`, `signature`, `Summary`, `EventName`, `Venue`, and the integer `OrderId` and `CheckoutSessionId` (database ids never enter the warehouse).
+- Metadata allowlist, confirmed against live charges on 2026-09-27 (§4.5): bronco keys `CheckoutSessionKey`, `OrderNumber`, `EventKey`, `TicketCount`, `AdHocChargeGuid`, `Type`; legacy key `order_id`. (The legacy `order_key` was kept at first and removed on 2026-09-29: nothing reads it, and with the order id it was a credential on the legacy site.) Everything else is dropped, including `customer_email`, `customer_name`, `Customer Email`, `Customer Name`, `signature`, `Summary`, `EventName`, `Venue`, and the integer `OrderId` and `CheckoutSessionId` (database ids never enter the warehouse).
 - `order_ref` is the order number parsed from the charge `description` with the pattern `Order #?(\d+)`. The description itself is not stored.
 - `customer_hash` is `sha256(lower(trim(email)))` in hex, the same rule the CMS uses. The email is taken from the first of `billing_details.email`, `receipt_email`, metadata `customer_email`, metadata `Customer Email`. It is null when none exists. The email is never written, logged or included in an exception message.
 
@@ -263,6 +265,8 @@ Without this rule the model counts the money twice (on the original event throug
 - `core_order_item_economics` and `core_bookings`: `booking_kind` (`purchase` | `transfer_in` | `transfer_superseded` | `unpaid_zero_total`), `seats_purchased`, `seats_transferred_out`, `transfer_root_order_key`.
 - `core_orders`: `is_transfer`, `transfer_root_order_key`.
 - `core_customer_identity.identity_source` gains the value `transfer_parent`.
+
+**Acquisition views follow the purchase (added 2026-09-29).** In `mart_daily_kpis` and `mart_paid_performance`, a transferred seat's money is reported on the original order: its date, channel, metro and campaign. Event, instructor and customer views report it on the class attended.
 
 **Known limit.** The original event's booking curve shows the seats that stayed, from the original purchase date. It does not show a seat as sold and later released.
 
