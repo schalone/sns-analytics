@@ -23,7 +23,8 @@ Orders are identified by `woo-<id>` and events by `woo-ev-<id>` only. No persona
 
 ## Rules validated
 
-The rules of the addendum spec §2, checked against the worked orders and events below. Where a rule reads
+The economics rules of the design addendum (`docs/superpowers/specs/2026-09-27-economics-and-booking-curve-design.md`),
+checked against the worked orders and events below. Where a rule reads
 "model computes it as specified", the worked orders prove that the model applies the rule exactly as written
 to Stripe's own figures. That the business actually splits its money this way is the owner's statement; it
 cannot be checked without payout records, which are not used.
