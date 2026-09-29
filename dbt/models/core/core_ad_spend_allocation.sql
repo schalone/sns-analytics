@@ -1,4 +1,3 @@
-{{ config(tags=['hourly']) }}
 -- An allocation convention, not attribution and not a measure of incrementality.
 -- Each (date, platform, metro) amount of spend is divided among the events that sold seats that day,
 -- in that metro, in proportion to seats. Spend with no metro is divided among every event that sold

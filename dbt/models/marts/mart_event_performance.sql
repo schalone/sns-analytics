@@ -1,4 +1,3 @@
-{{ config(tags=['hourly']) }}
 -- core_event_economics plus a benchmark against similar events: same metro, category and weekday
 -- class (weekend vs weekday), in the peer_window_days before the event. Peers require a non-null
 -- metro_key and a non-null event_date on both sides, and a non-null, matching is_weekend; an event

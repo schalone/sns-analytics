@@ -1,4 +1,3 @@
-{{ config(tags=['hourly']) }}
 -- One row per event in either era: what it was, how it sold, what it earned, how fast it filled.
 -- Instructor materials appear only as an estimate on the instructor's side and are never subtracted
 -- from any S&S figure. When there is no ad spend data for the selling window, contribution is null

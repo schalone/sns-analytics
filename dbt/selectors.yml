@@ -5,12 +5,16 @@ selectors:
       models and the hourly marts) WITH their ancestors, so the staging views and their tests run too, but never
       a `ga4`-tagged model (core_sessions, core_session_orders: the GA4 daily export lands once a day, so they
       build in the daily run only; mart_daily_kpis reads the existing core_sessions table) and never the GA4
-      source itself.
+      source itself. Tests run only when every model they read is selected or is an ancestor of a selected
+      model (indirect_selection: buildable), so a test that also reads a daily-only table (core_event_economics,
+      core_event_daily, core_customers, mart_event_performance) runs in the daily build, never against a daily
+      table that is up to a day older than the hourly tables beside it.
     definition:
       union:
         - method: tag
           value: hourly
           parents: true
+          indirect_selection: buildable
         - exclude:
             - method: tag
               value: ga4

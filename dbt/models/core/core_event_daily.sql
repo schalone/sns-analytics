@@ -1,4 +1,4 @@
-{{ config(tags=['hourly'], partition_by={'field': 'snapshot_date', 'data_type': 'date', 'granularity': 'month'}, cluster_by=['event_key']) }}
+{{ config(partition_by={'field': 'snapshot_date', 'data_type': 'date', 'granularity': 'month'}, cluster_by=['event_key']) }}
 -- The booking curve: one row per event per calendar day, from the earlier of the first sale and
 -- curve_days before the event, up to the event date. Capacity is the final recorded capacity.
 -- cumulative_realized_revenue keeps its name for existing consumers but is net: realized revenue less
