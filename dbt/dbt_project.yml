@@ -32,7 +32,12 @@ vars:
   materials_per_seat: 6.00        # instructor-side estimate, informational only
   curve_days: 60                  # booking curve starts this many days before the event, or at first sale if earlier
   peer_window_days: 365
-  peer_min_count: 5
+  peer_min_count: 5               # a benchmark needs this many peers with a non-null value for that measure
+  # mart_event_performance: a peer must have taken place before as_of_date (default: today in New York; set a
+  # date only to fix "today", as unit tests do) and must not have one of these statuses (case-insensitive;
+  # a NULL status is allowed).
+  as_of_date: null
+  peer_excluded_statuses: ['trash', 'pending', 'private', 'draft', 'auto-draft', 'cancelled', 'canceled']
 models:
   sns_analytics:
     staging: {+materialized: view, +schema: staging}

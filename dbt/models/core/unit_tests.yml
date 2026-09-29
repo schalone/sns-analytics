@@ -78,8 +78,11 @@ unit_tests:
           - {event_key: "eeeeeeee-0000-0000-0000-000000000004", title: "Free event", event_date: "2026-08-15", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: 10, ticket_price: 0, status: Published}
       - input: ref('stg_cms__tickets')
         rows:
-          - {ticket_key: k1, event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Paid}
-          - {ticket_key: k2, event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Refunded}
+          - {ticket_key: k1, order_key: "aaaaaaaa-0000-0000-0000-000000000001", event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Paid}
+          - {ticket_key: k2, order_key: "aaaaaaaa-0000-0000-0000-000000000001", event_key: "eeeeeeee-0000-0000-0000-000000000001", status: Refunded}
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: "aaaaaaaa-0000-0000-0000-000000000001", source: webapp}
       - input: ref('core_venues')
         rows:
           - {venue_key: v1, metro_key: m1, wordpress_source_id: null}
@@ -130,6 +133,49 @@ unit_tests:
         - {event_key: "eeeeeeee-0000-0000-0000-000000000004", event_source: cms, platform_era: bronco, title: "Free event", capacity: 10, capacity_source: cms, ticket_price: 0, seats_sold: 0, seats_available: 10, venue_key: v1, metro_key: m1, instructor_key: null, wordpress_source_id: null, has_event_date: true}
         - {event_key: "woo-ev-600", event_source: woo_archive, platform_era: legacy_event_tickets, title: "Legacy only", capacity: 14, capacity_source: woo_products, ticket_price: 50, seats_sold: 3, seats_available: 11, venue_key: "woo-venue-9", metro_key: m2, instructor_key: "woo-org-7", wordpress_source_id: "600", has_event_date: true}
         - {event_key: "woo-ev-700", event_source: woo_archive, platform_era: legacy_event_tickets, title: "Old undated workshop", capacity: null, capacity_source: none, ticket_price: 40, seats_sold: 0, seats_available: null, venue_key: null, metro_key: null, instructor_key: null, wordpress_source_id: "700", has_event_date: false}
+
+  - name: events_cms_seats_count_webapp_tickets_only
+    description: >
+      An event imported from WordPress counts the archive's own ticket-line seats plus the CMS tickets that
+      hold a seat on a new-platform order (source 'webapp'). A CMS ticket on an imported ('wordpressImport')
+      order is the same legacy seat the archive already counts, and a ticket with no order is not counted.
+      Here: 2 archive seats, 2 CMS tickets on a wordpressImport order, 1 on a webapp order, 1 with no order:
+      seats_sold 3.
+    model: core_events
+    given:
+      - input: ref('stg_cms__events')
+        rows:
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000002", title: "Imported event", event_date: "2025-03-01", start_time: "18:00:00", end_time: "20:00:00", time_zone: "America/New_York", venue_key: v1, capacity: 20, ticket_price: 60, wordpress_source_id: "500", status: Published}
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: k1, order_key: imp1, event_key: "eeeeeeee-0000-0000-0000-000000000002", status: Paid}
+          - {ticket_key: k2, order_key: imp1, event_key: "eeeeeeee-0000-0000-0000-000000000002", status: Paid}
+          - {ticket_key: k3, order_key: web1, event_key: "eeeeeeee-0000-0000-0000-000000000002", status: Paid}
+          - {ticket_key: k4, order_key: null, event_key: "eeeeeeee-0000-0000-0000-000000000002", status: Paid}
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: imp1, source: wordpressImport}
+          - {order_key: web1, source: webapp}
+      - input: ref('core_venues')
+        rows:
+          - {venue_key: v1, metro_key: m1, wordpress_source_id: null}
+      - input: ref('core_instructors')
+        rows: []
+      - input: ref('stg_woo__events')
+        rows:
+          - {woo_event_id: "500", title: "Imported event (archive)", event_date: "2025-03-01", start_at: "2025-03-01 23:00:00", event_cost: 60}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: "p1", woo_event_id: "500", product_kind: ticket, ticket_capacity: 16, regular_price: 60, name: "Imported event"}
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-1", status: completed}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-1", order_key: "woo-1", woo_product_id: "p1", quantity: 2, subtotal: 120}
+    expect:
+      rows:
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000002", seats_sold: 3, seats_available: 17}
 
   - name: order_items_legacy_event_join_is_deduplicated
     description: Two core_events rows can share a wordpress_source_id (e.g. a CMS-imported event and its archive-only counterpart); the legacy branch must resolve to one line item, carrying the CMS event's key, not one row per matching event.

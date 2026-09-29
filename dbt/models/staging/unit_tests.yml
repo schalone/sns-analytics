@@ -1,0 +1,56 @@
+version: 2
+
+unit_tests:
+  - name: stg_cms__orders_lowercases_checkout_session_key
+    description: >
+      Stripe's checkout session key is lower-cased in stg_stripe__balance_transactions, so the CMS side is
+      lower-cased too: the two keys match whatever case either system writes the GUID in.
+    model: stg_cms__orders
+    given:
+      - input: source('raw_cms', 'orders')
+        format: sql
+        rows: |
+          select 'o1' as key, timestamp '2026-09-01 00:00:00' as updated_at, timestamp '2026-09-01 00:00:00' as _loaded_at,
+            json '{"checkoutSessionKey": "CCCCCCCC-0000-0000-0000-00000000ABCD", "source": "webapp"}' as payload
+    expect:
+      rows:
+        - {order_key: o1, checkout_session_key: "cccccccc-0000-0000-0000-00000000abcd", source: webapp}
+
+  - name: stg_cms__checkout_sessions_lowercases_key
+    description: The checkout session's own key is lower-cased, like every other checkout_session_key.
+    model: stg_cms__checkout_sessions
+    given:
+      - input: source('raw_cms', 'checkout_sessions')
+        format: sql
+        rows: |
+          select 'CCCCCCCC-0000-0000-0000-00000000ABCD' as key, timestamp '2026-09-01 00:00:00' as updated_at,
+            timestamp '2026-09-01 00:00:00' as _loaded_at, json '{"status": "Completed"}' as payload
+    expect:
+      rows:
+        - {checkout_session_key: "cccccccc-0000-0000-0000-00000000abcd", status: Completed}
+
+  - name: stg_cms__order_items_lowercases_checkout_session_key
+    description: An order item's checkout session key is lower-cased, like every other checkout_session_key.
+    model: stg_cms__order_items
+    given:
+      - input: source('raw_cms', 'order_items')
+        format: sql
+        rows: |
+          select 'i1' as key, timestamp '2026-09-01 00:00:00' as updated_at, timestamp '2026-09-01 00:00:00' as _loaded_at,
+            json '{"checkoutSessionKey": "CCCCCCCC-0000-0000-0000-00000000ABCD", "orderKey": "o1"}' as payload
+    expect:
+      rows:
+        - {order_item_key: i1, checkout_session_key: "cccccccc-0000-0000-0000-00000000abcd"}
+
+  - name: stg_cms__promo_redemptions_lowercases_checkout_session_key
+    description: A promo redemption's checkout session key is lower-cased, like every other checkout_session_key.
+    model: stg_cms__promo_redemptions
+    given:
+      - input: source('raw_cms', 'promo_redemptions')
+        format: sql
+        rows: |
+          select 'r1' as key, timestamp '2026-09-01 00:00:00' as updated_at, timestamp '2026-09-01 00:00:00' as _loaded_at,
+            json '{"checkoutSessionKey": "CCCCCCCC-0000-0000-0000-00000000ABCD"}' as payload
+    expect:
+      rows:
+        - {redemption_key: r1, checkout_session_key: "cccccccc-0000-0000-0000-00000000abcd"}

@@ -19,7 +19,8 @@ select
   json_value(payload, '$.billingCity')                      as billing_city,
   json_value(payload, '$.billingState')                     as billing_state,
   json_value(payload, '$.billingZip')                       as billing_zip,
-  json_value(payload, '$.checkoutSessionKey')               as checkout_session_key,
+  -- lower-cased: the Stripe side (stg_stripe__balance_transactions) is lower-cased, and a GUID's case carries no meaning
+  lower(json_value(payload, '$.checkoutSessionKey'))        as checkout_session_key,
   json_value(payload, '$.stripeCheckoutSessionId')          as stripe_checkout_session_id,
   json_value(payload, '$.source')                           as source,
   json_value(payload, '$.wordpressOrderId')                 as wordpress_order_id

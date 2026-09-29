@@ -1,5 +1,8 @@
+{{ config(severity='warn') }}
 -- Stripe loads daily and the CMS hourly, so a fresh bronco order legitimately has no Stripe charge yet.
--- After two days a card-paid bronco order without one is a broken join, not a timing gap.
+-- After two days a card-paid bronco order without one is a broken join, not a timing gap. Warn severity: one
+-- unmatched order must not stop the build and leave every economics mart stale; a broken join across a
+-- meaningful share of a month's sales fails assert_bronco_fee_match_rate instead.
 select booking_key, order_key, purchase_date
 from {{ ref('core_bookings') }}
 where platform_era = 'bronco' and fee_source = 'estimated'

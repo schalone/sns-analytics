@@ -10,7 +10,7 @@
 -- is null or zero. Its ticket_price falls back the same way when null, or when zero and the archive
 -- has a price for that event; a CMS price of exactly 0 with no archive price stays 0 (a genuinely
 -- free event, not an unset one). Its seats_sold adds the archive's own ticket-line seats on top of
--- its CMS ticket count. An event the CMS never imported is built entirely from the archive and keyed
+-- its CMS ticket count, which counts only tickets on new-platform ('webapp') orders. An event the CMS never imported is built entirely from the archive and keyed
 -- woo-ev-<id>; its venue/instructor are resolved through the legacy id on
 -- core_venues/core_instructors, which already carry the equivalent woo-venue-<id> / woo-org-<id>
 -- rows for anything the CMS didn't import either.
@@ -53,8 +53,13 @@ sold as (
   -- Final-review I6: a seat is sold when its ticket is Active, Paid or Used -- the site's own seat count
   -- (EventAvailabilityService.cs:76 and :122 in sns-analytics-export-api). Held/Pending are checkout holds;
   -- Transferred tickets gave their seat to a new Paid ticket; Expired/Failed/Refunded/Cancelled hold none.
-  -- One ticket = one seat (the export emits one row per ticket).
-  select event_key, countif(status in ('Active', 'Paid', 'Used')) as seats_sold from {{ ref('stg_cms__tickets') }} group by event_key
+  -- One ticket = one seat (the export emits one row per ticket). Only tickets on a new-platform order
+  -- (source 'webapp') count: a ticket on an order imported from WordPress ('wordpressImport') is a legacy seat
+  -- the archive already counts below, and a ticket with no order counts as nothing.
+  select t.event_key, countif(t.status in ('Active', 'Paid', 'Used')) as seats_sold
+  from {{ ref('stg_cms__tickets') }} t
+  join {{ ref('stg_cms__orders') }} o on o.order_key = t.order_key and o.source = 'webapp'
+  group by t.event_key
 ),
 -- Prefer the export's own start_at_utc/end_at_utc (the same instants, already in UTC)
 -- when present, falling back to the event_date + venue-local start/end_time + time_zone
