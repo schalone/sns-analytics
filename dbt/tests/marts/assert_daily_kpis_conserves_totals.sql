@@ -6,7 +6,9 @@
 -- net_distributable and sns_share must equal the same sums over core_bookings, restricted to
 -- bookings whose order exists in core_orders (a booking with no matching order -- e.g. the one
 -- known negative-total WooCommerce order core_orders drops -- has nothing on the mart side to
--- conserve against). The tolerance scales with the number of distinct business_dates in the mart:
+-- conserve against). Legacy transfer orders (is_transfer) are not purchases and the mart counts none of their
+-- orders, seats or revenue, so the order-side truths exclude them; their bookings' moved money stays in the
+-- bookings truth, since the mart reports it on the transfer's row. The tolerance scales with the number of distinct business_dates in the mart:
 -- many independently-rounded per-order and per-event sums are being added back together here.
 with mart as (
   select sum(sessions) as sessions, sum(orders) as orders, sum(net_revenue) as net_revenue,
@@ -23,6 +25,7 @@ orders_truth as (
   select count(*) as orders, sum(net_revenue) as net_revenue,
     sum(if(order_type = 'ticket', net_revenue, 0)) as ticket_net_revenue, countif(order_type = 'ticket') as ticket_orders
   from {{ ref('core_orders') }}
+  where not is_transfer
 ),
 bookings_truth as (
   select sum(b.net_distributable) as net_distributable, sum(b.sns_share) as sns_share

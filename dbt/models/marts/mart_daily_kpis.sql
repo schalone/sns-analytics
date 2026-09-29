@@ -21,6 +21,12 @@
 -- null-metro row only (NULL on metro rows); dashboards compute CVR as SUM(channel_ticket_orders) / SUM(sessions)
 -- over null-metro rows. The grid guarantees a null-metro row for every (date, platform_era, channel) that has
 -- orders, so the total is never lost when every order of a channel-day carries a metro.
+--
+-- Legacy seat transfers: a transfer order (core_orders.is_transfer) moved a seat of an earlier paid order
+-- to another event. It is not a purchase, so it adds nothing to orders, ticket_orders (and hence the CVR
+-- numerator channel_ticket_orders), seats, gross_revenue, net_revenue, ticket_net_revenue or new_customers.
+-- net_distributable and sns_share still sum core_bookings by order, so the money its booking took from the
+-- root order is reported on the transfer's own business date and channel/metro row.
 with s as (
   select session_date as business_date, platform_era, default_channel_group as channel_group, cast(null as string) as metro_key,
     count(*) as sessions, countif(engaged) as engaged_sessions
@@ -29,9 +35,11 @@ with s as (
 o as (
   select o.business_date, o.platform_era, coalesce(cs.default_channel_group, 'Unattributed') as channel_group,
     coalesce(e.metro_key, o.billing_metro_key) as metro_key,
-    count(*) as orders, countif(o.order_type = 'ticket') as ticket_orders, sum(o.seats) as seats,
-    sum(o.gross_revenue) as gross_revenue, sum(o.net_revenue) as net_revenue,
-    sum(if(o.order_type = 'ticket', o.net_revenue, 0)) as ticket_net_revenue, countif(o.is_first_order) as new_customers,
+    countif(not o.is_transfer) as orders, countif(o.order_type = 'ticket' and not o.is_transfer) as ticket_orders,
+    sum(if(o.is_transfer, 0, o.seats)) as seats,
+    sum(if(o.is_transfer, 0, o.gross_revenue)) as gross_revenue, sum(if(o.is_transfer, 0, o.net_revenue)) as net_revenue,
+    sum(if(o.order_type = 'ticket' and not o.is_transfer, o.net_revenue, 0)) as ticket_net_revenue,
+    countif(o.is_first_order and not o.is_transfer) as new_customers,
     sum(coalesce(bk.net_distributable, 0)) as net_distributable, sum(coalesce(bk.sns_share, 0)) as sns_share
   from {{ ref('core_orders') }} o
   left join {{ ref('core_session_orders') }} so using (order_key)

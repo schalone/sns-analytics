@@ -13,7 +13,10 @@ models:
       SUM(channel_ticket_orders) / SUM(sessions) over null-metro rows. `cvr` is NULL on metro rows, whenever
       sessions are absent or zero, and on any `business_date` flagged `unreliable_ga4` in the `date_flags` seed
       (the Jun 19-22 GA4 cutover blackout). `ticket_net_revenue` is the net revenue of ticket orders only (the
-      numerator for ticket AOV); `aov` is NULL when the cell has no orders.
+      numerator for ticket AOV); `aov` is NULL when the cell has no orders. Legacy transfer orders
+      (core_orders.is_transfer: a zero-total order that moved a seat to another event) are not purchases and add
+      nothing to orders, ticket_orders, seats, gross or net revenue, new_customers or the CVR numerator; the money
+      their bookings took from the original order is in net_distributable and sns_share on the transfer's own row.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
