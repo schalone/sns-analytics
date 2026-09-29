@@ -29,7 +29,9 @@ sns-analytics/
     tests/                 singular data tests (corrections, pinned facts, reconciliation)
     seeds/                 date_flags.csv, campaign_metro_map.csv
     selectors.yml          the `hourly` selector used by the hourly job
-  brief/                warehouse-backed data for the Slack morning brief (module + patch; see brief/README.md)
+  brief/                the Slack morning brief + Google Ads job (Cloud Run job `sns-ads-sync`, own image via
+                        brief/Dockerfile + brief/deploy.sh): ga_report (GA4 or warehouse), sync_radii (weekly radius
+                        sync + ads report + brief assembly), ai_summary, slack_post, charts, build_campaigns; see brief/README.md
   infra/                setup.sh (idempotent GCP setup, run from Cloud Shell), bq_admin.py, create_raw_tables.py
   jobs/                 entrypoint.sh (loaders -> dbt build -> Slack status), used by the root Dockerfile
   tests/                pytest for loaders, with recorded fixtures -- no live API calls

@@ -156,12 +156,9 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
     Who: anyone with BigQuery Data Viewer on `mart`/`core`. What: follow `docs/looker-studio.md`. Verify:
     both data sources connect and both pages render (the Paid page stays empty until items 6/10 land).
 
-13. **Apply the brief patch.**
-    Who: whoever deploys the `sipandscript-sns.webapp.cms` repo's `scripts/google-ads/` Cloud Run job. What:
-    first satisfy `brief/README.md`'s "Before switching `BRIEF_SOURCE` to `warehouse`" checklist (new-site
-    orders flowing — item 8; a real day's orders/revenue compared with the Stripe dashboard — item 9; the
-    daily job finishing before the brief's schedule); then apply
-    `patch -p0 < /path/to/sns-analytics/brief/ga_report_wiring.patch` from that repo's `scripts/google-ads/`
-    directory, vendor `brief/warehouse.py` (+ `brief/__init__.py`) into `scripts/google-ads/brief/`, and set
-    `BRIEF_SOURCE=warehouse` on that job. Verify: the morning brief's orders/revenue match the Stripe
-    dashboard for a real recent day.
+13. **Switch the brief to the warehouse.**
+    Who: whoever deploys the `sns-ads-sync` Cloud Run job (now built from this repo's `brief/`, see
+    `brief/deploy.sh`). What: first satisfy `brief/README.md`'s "Before switching `BRIEF_SOURCE` to `warehouse`"
+    checklist (new-site orders flowing — item 8; a real day's orders/revenue compared with the Stripe dashboard —
+    item 9; the daily job finishing before the brief's schedule); then run `BRIEF_SOURCE=warehouse brief/deploy.sh`.
+    Verify: the morning brief's orders/revenue match the Stripe dashboard for a real recent day.

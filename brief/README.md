@@ -49,40 +49,26 @@ CVR not comparable"` line to the brief's flags. Sessions, orders and revenue are
 that window — only the CVR ratio is suppressed, since it's the one the mart itself can't compute for those
 days. The daily chart (`series`) is unaffected and always shows the days' actual recorded sessions/orders.
 
-## Applying the patch (in the CMS repo, not here)
+## Layout (since the job moved into this repo, 2026-09-28)
 
-From `scripts/google-ads/` in the `sipandscript-sns.webapp.cms` checkout:
+The job itself lives here now (moved from `sipandscript-sns.webapp.cms/scripts/google-ads/`):
 
-```bash
-patch -p0 < /path/to/sns-analytics/brief/ga_report_wiring.patch
-```
+| file | role |
+|---|---|
+| `sync_radii.py` | entrypoint: `--apply` weekly radius sync, `--report` Ads report, `--ga-report` website report, `--brief` the combined morning brief; inventory-drop guard; Cloud Storage state |
+| `ga_report.py` | website numbers from GA4 (orders = distinct transaction ids), or from `warehouse.py` when `BRIEF_SOURCE=warehouse` |
+| `warehouse.py` | the BigQuery-backed `report_data` described above |
+| `ai_summary.py` | Claude narrative via Workload Identity Federation (no API key) |
+| `slack_post.py`, `charts.py` | Block Kit card + thread + PNG charts via the Ad Sync Bot token; webhook fallback |
+| `build_campaigns.py`, `metros.json`, `rest_of_us.json` | idempotent Google Ads campaign builder and its inputs |
+| `Dockerfile`, `requirements.txt`, `deploy.sh` | own image built from the repo root; `deploy.sh` rolls `sns-ads-sync` |
 
-This adds one `import os` and, at the top of `report_data`, one `if os.environ.get("BRIEF_SOURCE") ==
-"warehouse": ...` branch that calls `brief.warehouse.report_data(bigquery.Client(), today)` and returns it
-directly. When `BRIEF_SOURCE` is unset (the default), that `if` is false and `report_data` falls straight
-through to the untouched GA4 path below it — behaviour is unchanged. Verified in this session with
-`patch --dry-run` against the reference copy of `ga_report.py`, then applied for real to a throwaway copy in a
-temp directory and diffed byte-for-byte against the intended result (see `task-15-report.md` for the exact
-commands and output) — never against the CMS repo's actual working directory.
+Tests: `tests/test_brief_*.py` (unittest-style, collected by pytest). Launch record and account facts:
+`docs/google-ads-search-launch.md`.
 
-## Vendoring `brief/warehouse.py` next to the scripts
-
-The brief runs as a Cloud Run job built from the CMS repo's `scripts/google-ads/` folder, so
-`brief/warehouse.py` (plus an empty `brief/__init__.py`) needs to physically exist inside that folder at
-build time, as `scripts/google-ads/brief/warehouse.py` — a plain Python package sitting next to
-`ga_report.py`, `slack_post.py`, etc. Two ways to get it there, either is fine:
-
-* **Vendor (simplest, no new dependency):** copy `brief/` from this repo into
-  `scripts/google-ads/brief/` in the CMS repo, committed alongside the patched `ga_report.py`. Re-copy it
-  whenever `brief/warehouse.py` changes here.
-* **Install:** add `google-cloud-bigquery>=3.45,<4` (this repo's own pin) to
-  `scripts/google-ads/requirements.txt`, and either install this repo as a dependency of the Cloud Run image
-  or vendor just the one file as above. There's no packaging metadata in this repo for `brief` today (it's a
-  small, single-purpose module, not a published package), so plain vendoring is the lower-friction option
-  unless the CMS build already has a mechanism for pulling in sibling-repo code.
-
-Either way, `google-cloud-bigquery` must be importable in that Cloud Run image, since `report_data`'s
-warehouse path constructs a `bigquery.Client()`.
+The `BRIEF_SOURCE=warehouse` switch is a plain `from brief.warehouse import report_data` inside
+`ga_report.report_data` — the old cross-repo patch and vendoring steps are gone. Set the variable on the job by
+running `BRIEF_SOURCE=warehouse brief/deploy.sh` once the preconditions below hold.
 
 ## IAM
 

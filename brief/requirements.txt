@@ -1,0 +1,6 @@
+google-ads>=33,<34
+google-cloud-storage>=2.16,<4
+google-cloud-bigquery>=3.45,<4
+requests>=2.31,<3
+anthropic>=1.8,<2
+matplotlib>=3.9,<4

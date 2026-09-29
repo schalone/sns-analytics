@@ -1,0 +1,200 @@
+{
+ "charlotte": {
+  "query": "Charlotte, NC",
+  "label": "Charlotte, NC",
+  "lat": 35.2118448,
+  "lng": -80.84442320000001,
+  "total": 22,
+  "cities": [
+   "Belmont",
+   "Charlotte",
+   "Concord",
+   "Cornelius",
+   "Davidson"
+  ]
+ },
+ "south-florida": {
+  "query": "Fort Lauderdale, FL",
+  "label": "Fort Lauderdale, FL",
+  "lat": 26.132399,
+  "lng": -80.148425,
+  "total": 14,
+  "cities": [
+   "Delray Beach",
+   "Fort Lauderdale",
+   "Lighthouse Point",
+   "Parkland",
+   "West Palm Beach"
+  ]
+ },
+ "jacksonville": {
+  "query": "Jacksonville, FL",
+  "label": "Jacksonville, FL",
+  "lat": 30.185940000000002,
+  "lng": -81.573909,
+  "total": 12,
+  "cities": [
+   "Atlantic Beach",
+   "Fruit Cove",
+   "Jacksonville",
+   "Jacksonville Beach",
+   "Orange Park",
+   "St Augustine",
+   "St Augustine Beach"
+  ]
+ },
+ "iowa-city": {
+  "query": "Iowa City, IA",
+  "label": "Iowa City, IA",
+  "lat": 41.66113,
+  "lng": -91.53017,
+  "total": 13,
+  "cities": [
+   "Coralville",
+   "Muscatine",
+   "North Liberty"
+  ]
+ },
+ "salt-lake-city": {
+  "query": "Salt Lake City, UT",
+  "label": "Salt Lake City, UT",
+  "lat": 40.749214,
+  "lng": -111.896777,
+  "total": 13,
+  "cities": [
+   "Kaysville",
+   "Millcreek",
+   "Morgan",
+   "Ogden",
+   "Salt Lake",
+   "Salt Lake ",
+   "Salt Lake City",
+   "South Salt Lake"
+  ]
+ },
+ "louisville": {
+  "query": "Louisville, KY",
+  "label": "Louisville, KY",
+  "lat": 38.2410945,
+  "lng": -85.738156,
+  "total": 10,
+  "cities": [
+   "LOUISVILLE",
+   "Louisville"
+  ]
+ },
+ "lehigh-valley": {
+  "query": "Allentown, PA",
+  "label": "Allentown, PA",
+  "lat": 40.601276,
+  "lng": -75.473892,
+  "total": 24,
+  "cities": [
+   "Allentown",
+   "Bethlehem",
+   "Center Valley",
+   "Chester Springs",
+   "Conshohocken",
+   "Easton",
+   "Exton",
+   "Hellertown"
+  ]
+ },
+ "columbus": {
+  "query": "Columbus, OH",
+  "label": "Columbus, OH",
+  "lat": 39.96118,
+  "lng": -82.99879,
+  "total": 9,
+  "cities": [
+   "Grove City",
+   "Hilliard",
+   "New Albany",
+   "Westerville"
+  ]
+ },
+ "cincinnati": {
+  "query": "Cincinnati, OH",
+  "label": "Cincinnati, OH",
+  "lat": 39.195570000000004,
+  "lng": -84.40501499999999,
+  "total": 9,
+  "cities": [
+   "Cincinnati",
+   "Cincinnati ",
+   "Covington",
+   "Hamilton",
+   "Harrison",
+   "Mason"
+  ]
+ },
+ "houston": {
+  "query": "Houston, TX",
+  "label": "Houston, TX",
+  "lat": 29.8012835,
+  "lng": -95.3895415,
+  "total": 13,
+  "cities": [
+   "Houston",
+   "Richmond"
+  ]
+ },
+ "scottsdale": {
+  "query": "Scottsdale, AZ",
+  "label": "Scottsdale, AZ",
+  "lat": 33.5336495,
+  "lng": -111.906093,
+  "total": 13,
+  "cities": [
+   "Chandler",
+   "Gilbert",
+   "Mesa",
+   "Mesa ",
+   "Phoenix",
+   "Queen Creek",
+   "Scottsdale",
+   "Tempe"
+  ]
+ },
+ "connecticut": {
+  "query": "Hartford, CT",
+  "label": "Hartford, CT",
+  "lat": 41.76371,
+  "lng": -72.68509,
+  "total": 10,
+  "cities": [
+   "Berlin",
+   "Ludlow",
+   "Manchester",
+   "Middlefield",
+   "Simsbury",
+   "South Glastonbury",
+   "Sturbridge",
+   "Suffield"
+  ]
+ },
+ "detroit": {
+  "query": "Detroit, MI",
+  "label": "Detroit, MI",
+  "lat": 42.33143,
+  "lng": -83.04575,
+  "total": 9,
+  "cities": [
+   "Ann Arbor",
+   "Canton",
+   "Ferndale",
+   "Northville"
+  ]
+ },
+ "austin": {
+  "query": "Austin, TX",
+  "label": "Austin, TX",
+  "lat": 30.292341999999998,
+  "lng": -97.7476568,
+  "total": 7,
+  "cities": [
+   "Austin",
+   "Round Rock"
+  ]
+ }
+}
