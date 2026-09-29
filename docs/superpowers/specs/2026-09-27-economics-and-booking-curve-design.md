@@ -243,7 +243,8 @@ Without this rule the model counts the money twice (on the original event throug
 
 - A **transfer order** is a legacy order that counts as paid by status, has a total of zero, has a parent order, and carries at least one ticket line with value.
 - Its **root** is the first ancestor with a total above zero, reached by following parents through other transfer orders, at most five steps. A transfer order with no such ancestor has no root.
-- For each root, its transfer orders of any depth are ranked latest first. Seats are **held** by the latest transfers up to the number of ticket seats the root bought. Earlier transfers beyond that number are **superseded**: their seat moved on again.
+- A transfer order that is the parent of another transfer order is **superseded**: its seat moved on again. For each root, its remaining transfer orders of any depth are ranked latest first. Seats are **held** by the latest of them up to the number of ticket seats the root bought. Earlier ones beyond that number are also superseded.
+- When the root has no ticket lines (its money sits on other products), its transfers hold their seats with no money.
 
 **Rules**
 
