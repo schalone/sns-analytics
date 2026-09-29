@@ -3,6 +3,10 @@
 -- email and 36% of its orders are guest checkouts, so legacy identity comes from the hashed billing
 -- email on the Stripe charge, then from the CMS's imported copy of the WordPress order. The last-resort
 -- surrogate key is a hash of the legacy WooCommerce account id, never the id itself.
+-- A legacy transfer order (a zero-total order that moved a seat of an earlier paid order to another
+-- event, see core_seat_transfers) belongs to its root order's customer: it takes the root's resolved
+-- customer_hash with identity_source 'transfer_parent', or stays unresolved when the root is unresolved.
+-- A transfer with no root resolves as any other order.
 with orders as (
   select order_key, 'webapp' as source_system, customer_hash as cms_hash, cast(null as string) as woo_customer_id
   from {{ ref('stg_cms__orders') }}
@@ -42,14 +46,35 @@ propagated as (
   where woo_customer_id is not null and direct_hash is not null
   group by woo_customer_id, direct_hash
   qualify row_number() over (partition by woo_customer_id order by count(*) desc, direct_hash) = 1
+),
+resolved as (
+  select d.order_key, d.source_system,
+    coalesce(d.direct_hash, p.propagated_hash, concat('woo-cust-', substr(to_hex(sha256(concat('woo-customer:', d.woo_customer_id))), 1, 32))) as customer_hash,
+    case
+      when d.direct_hash is not null then d.direct_source
+      when p.propagated_hash is not null then 'woo_propagated'
+      when d.woo_customer_id is not null then 'woo_surrogate'
+      else 'unresolved'
+    end as identity_source
+  from direct d
+  left join propagated p using (woo_customer_id)
+),
+transfer_roots as (
+  select distinct order_key, root_order_key
+  from {{ ref('core_seat_transfers') }}
+  where root_order_key is not null
 )
-select d.order_key, d.source_system,
-  coalesce(d.direct_hash, p.propagated_hash, concat('woo-cust-', substr(to_hex(sha256(concat('woo-customer:', d.woo_customer_id))), 1, 32))) as customer_hash,
+select r.order_key, r.source_system,
   case
-    when d.direct_hash is not null then d.direct_source
-    when p.propagated_hash is not null then 'woo_propagated'
-    when d.woo_customer_id is not null then 'woo_surrogate'
-    else 'unresolved'
+    when t.order_key is null then r.customer_hash
+    when root.identity_source = 'unresolved' then null
+    else root.customer_hash
+  end as customer_hash,
+  case
+    when t.order_key is null then r.identity_source
+    when root.identity_source = 'unresolved' then 'unresolved'
+    else 'transfer_parent'
   end as identity_source
-from direct d
-left join propagated p using (woo_customer_id)
+from resolved r
+left join transfer_roots t using (order_key)
+left join resolved root on root.order_key = t.root_order_key

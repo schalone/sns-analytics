@@ -53,6 +53,8 @@ unit_tests:
           - {txn_id: t1, type: charge, source_object: charge, order_key: "aaaaaaaa-0000-0000-0000-000000000001", customer_hash: stripe_hash_ignored, created_at: "2026-09-01 00:00:00"}
           - {txn_id: t2, type: charge, source_object: charge, order_key: "woo-101", customer_hash: stripe_101, created_at: "2024-01-01 00:00:00"}
           - {txn_id: t3, type: charge, source_object: charge, order_key: "woo-103", customer_hash: stripe_55, created_at: "2024-01-01 00:00:00"}
+      - input: ref('core_seat_transfers')
+        rows: []
     expect:
       rows:
         - {order_key: "aaaaaaaa-0000-0000-0000-000000000001", source_system: webapp, customer_hash: cms_hash, identity_source: cms}
@@ -546,19 +548,19 @@ unit_tests:
     given:
       - input: ref('core_orders')
         rows:
-          - {order_key: "woo-1", customer_hash: h1, identity_source: stripe, created_at: "2025-01-10 15:00:00", business_date: "2025-01-10", platform_era: legacy_event_tickets}
-          - {order_key: "woo-2", customer_hash: h1, identity_source: woo_propagated, created_at: "2025-03-01 15:00:00", business_date: "2025-03-01", platform_era: legacy_event_tickets}
-          - {order_key: A, customer_hash: h1, identity_source: cms, created_at: "2026-08-01 15:00:00", business_date: "2026-08-01", platform_era: bronco}
-          - {order_key: B, customer_hash: h2, identity_source: cms, created_at: "2026-08-02 15:00:00", business_date: "2026-08-02", platform_era: bronco}
-          - {order_key: "woo-3", customer_hash: "woo-cust-66", identity_source: woo_surrogate, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
-          - {order_key: "woo-4", customer_hash: null, identity_source: unresolved, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
+          - {order_key: "woo-1", is_transfer: false, customer_hash: h1, identity_source: stripe, created_at: "2025-01-10 15:00:00", business_date: "2025-01-10", platform_era: legacy_event_tickets}
+          - {order_key: "woo-2", is_transfer: false, customer_hash: h1, identity_source: woo_propagated, created_at: "2025-03-01 15:00:00", business_date: "2025-03-01", platform_era: legacy_event_tickets}
+          - {order_key: A, is_transfer: false, customer_hash: h1, identity_source: cms, created_at: "2026-08-01 15:00:00", business_date: "2026-08-01", platform_era: bronco}
+          - {order_key: B, is_transfer: false, customer_hash: h2, identity_source: cms, created_at: "2026-08-02 15:00:00", business_date: "2026-08-02", platform_era: bronco}
+          - {order_key: "woo-3", is_transfer: false, customer_hash: "woo-cust-66", identity_source: woo_surrogate, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
+          - {order_key: "woo-4", is_transfer: false, customer_hash: null, identity_source: unresolved, created_at: "2019-08-02 15:00:00", business_date: "2019-08-02", platform_era: legacy_event_tickets}
       - input: ref('core_bookings')
         rows:
-          - {booking_key: k1, order_key: "woo-1", event_key: E1, customer_hash: h1, identity_source: stripe, purchase_date: "2025-01-10", net_seats: 2, realized_revenue: 100, refunded_amount: 0, sns_share: 38}
-          - {booking_key: k2, order_key: "woo-2", event_key: E2, customer_hash: h1, identity_source: woo_propagated, purchase_date: "2025-03-01", net_seats: 1, realized_revenue: 50, refunded_amount: 0, sns_share: 19}
-          - {booking_key: k3, order_key: A, event_key: E3, customer_hash: h1, identity_source: cms, purchase_date: "2026-08-01", net_seats: 2, realized_revenue: 126, refunded_amount: 0, sns_share: 48.8}
-          - {booking_key: k4, order_key: B, event_key: E3, customer_hash: h2, identity_source: cms, purchase_date: "2026-08-02", net_seats: 1, realized_revenue: 63, refunded_amount: 63, sns_share: -0.8}
-          - {booking_key: k5, order_key: "woo-3", event_key: E1, customer_hash: "woo-cust-66", identity_source: woo_surrogate, purchase_date: "2019-08-02", net_seats: 1, realized_revenue: 40, refunded_amount: 0, sns_share: 15}
+          - {booking_key: k1, order_key: "woo-1", event_key: E1, customer_hash: h1, identity_source: stripe, purchase_date: "2025-01-10", net_seats: 2, seats: 2, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 100, refunded_amount: 0, sns_share: 38}
+          - {booking_key: k2, order_key: "woo-2", event_key: E2, customer_hash: h1, identity_source: woo_propagated, purchase_date: "2025-03-01", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 50, refunded_amount: 0, sns_share: 19}
+          - {booking_key: k3, order_key: A, event_key: E3, customer_hash: h1, identity_source: cms, purchase_date: "2026-08-01", net_seats: 2, seats: 2, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 126, refunded_amount: 0, sns_share: 48.8}
+          - {booking_key: k4, order_key: B, event_key: E3, customer_hash: h2, identity_source: cms, purchase_date: "2026-08-02", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 63, refunded_amount: 63, sns_share: -0.8}
+          - {booking_key: k5, order_key: "woo-3", event_key: E1, customer_hash: "woo-cust-66", identity_source: woo_surrogate, purchase_date: "2019-08-02", net_seats: 1, seats: 1, booking_kind: purchase, seats_transferred_out: 0, realized_revenue: 40, refunded_amount: 0, sns_share: 15}
       - input: ref('core_events')
         rows:
           - {event_key: E1, metro_key: boston}
@@ -765,3 +767,114 @@ unit_tests:
         - {order_item_key: "woo-li-c6", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.188148, fee_source: actual, net_distributable: 67.811852, sns_share: 27.124741, instructor_share: 40.687111, is_cancelled: false, transfer_root_order_key: "woo-r6"}
         - {order_item_key: "woo-li-r7", booking_kind: purchase, event_key: "woo-ev-601", purchase_date: "2024-03-01", seats_purchased: 1, seats_transferred_out: 1, seats: 0, list_value: 0, discount: 0, service_fee: 0, realized_revenue: 0, refunded_amount: 0, processing_fee: 0, fee_source: actual, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false, transfer_root_order_key: null}
         - {order_item_key: "woo-li-c7", booking_kind: transfer_in, event_key: "woo-ev-602", purchase_date: "2024-03-05", seats_purchased: 0, seats_transferred_out: 0, seats: 1, list_value: 70, discount: 0, service_fee: 0, realized_revenue: 70, refunded_amount: 0, processing_fee: 2.33, fee_source: actual, net_distributable: 67.67, sns_share: 27.068, instructor_share: 40.602, is_cancelled: true, transfer_root_order_key: "woo-r7"}
+
+  - name: customer_identity_transfer_takes_root_customer
+    description: >
+      A transfer order with a root belongs to the root's customer (identity_source transfer_parent), even when
+      it carries a hash of its own; when the root is unresolved, so is the transfer. A transfer with no root
+      resolves as any other order.
+    model: core_customer_identity
+    given:
+      - input: ref('stg_cms__orders')
+        rows: []
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-201", woo_order_id: "201", woo_customer_id: "0"}
+          - {order_key: "woo-202", woo_order_id: "202", woo_customer_id: "0"}
+          - {order_key: "woo-203", woo_order_id: "203", woo_customer_id: "0"}
+          - {order_key: "woo-204", woo_order_id: "204", woo_customer_id: "0"}
+          - {order_key: "woo-205", woo_order_id: "205", woo_customer_id: "0"}
+          - {order_key: "woo-206", woo_order_id: "206", woo_customer_id: "0"}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, order_key: "woo-201", customer_hash: h201, created_at: "2024-01-01 00:00:00"}
+          - {txn_id: t2, type: charge, source_object: charge, order_key: "woo-205", customer_hash: h205, created_at: "2024-01-01 00:00:00"}
+          - {txn_id: t3, type: charge, source_object: charge, order_key: "woo-206", customer_hash: h206, created_at: "2024-01-01 00:00:00"}
+      - input: ref('core_seat_transfers')
+        rows:
+          - {order_item_key: "woo-li-202", order_key: "woo-202", root_order_key: "woo-201"}
+          - {order_item_key: "woo-li-204", order_key: "woo-204", root_order_key: "woo-203"}
+          - {order_item_key: "woo-li-205", order_key: "woo-205", root_order_key: null}
+          - {order_item_key: "woo-li-206", order_key: "woo-206", root_order_key: "woo-201"}
+    expect:
+      rows:
+        - {order_key: "woo-201", source_system: woocommerce, customer_hash: h201, identity_source: stripe}
+        - {order_key: "woo-202", source_system: woocommerce, customer_hash: h201, identity_source: transfer_parent}
+        - {order_key: "woo-203", source_system: woocommerce, customer_hash: null, identity_source: unresolved}
+        - {order_key: "woo-204", source_system: woocommerce, customer_hash: null, identity_source: unresolved}
+        - {order_key: "woo-205", source_system: woocommerce, customer_hash: h205, identity_source: stripe}
+        - {order_key: "woo-206", source_system: woocommerce, customer_hash: h201, identity_source: transfer_parent}
+
+  - name: orders_flag_transfers
+    description: >
+      is_transfer is true only for a transfer order with a root. A transfer is never a first order, and the
+      first-order ranking ignores transfers: woo-2 is dated before its customer's purchase woo-1 here, and
+      woo-1 is still the first order. A rootless transfer (woo-5) is an ordinary order.
+    model: core_orders
+    given:
+      - input: ref('stg_cms__orders')
+        rows: []
+      - input: ref('stg_cms__order_items')
+        rows: []
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-1", woo_order_id: "1", status: completed, total: 70, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-2", woo_order_id: "2", status: completed, total: 0, created_at: "2024-02-01 15:00:00", paid_at: null}
+          - {order_key: "woo-5", woo_order_id: "5", status: completed, total: 0, created_at: "2024-01-01 15:00:00", paid_at: null}
+          - {order_key: "woo-6", woo_order_id: "6", status: completed, total: 50, created_at: "2024-01-02 15:00:00", paid_at: null}
+      - input: ref('stg_woo__order_line_items')
+        rows: []
+      - input: ref('stg_woo__products')
+        rows: []
+      - input: source('public_geo', 'zip_codes')
+        rows: []
+      - input: ref('core_metros')
+        rows: []
+      - input: ref('core_customer_identity')
+        rows:
+          - {order_key: "woo-1", customer_hash: h1, identity_source: stripe}
+          - {order_key: "woo-2", customer_hash: h1, identity_source: transfer_parent}
+          - {order_key: "woo-5", customer_hash: h5, identity_source: stripe}
+          - {order_key: "woo-6", customer_hash: h5, identity_source: stripe}
+      - input: ref('core_seat_transfers')
+        rows:
+          - {order_item_key: "woo-li-2", order_key: "woo-2", root_order_key: "woo-1"}
+          - {order_item_key: "woo-li-5", order_key: "woo-5", root_order_key: null}
+    expect:
+      rows:
+        - {order_key: "woo-1", is_transfer: false, transfer_root_order_key: null, is_first_order: true}
+        - {order_key: "woo-2", is_transfer: true, transfer_root_order_key: "woo-1", is_first_order: false}
+        - {order_key: "woo-5", is_transfer: false, transfer_root_order_key: null, is_first_order: true}
+        - {order_key: "woo-6", is_transfer: false, transfer_root_order_key: null, is_first_order: false}
+
+  - name: customers_ignore_transfer_orders
+    description: >
+      A customer with one purchase and two transfers made one order and is not a repeat customer. The purchase
+      bought one seat on E1 and moved it: the later transfer (E2) holds it, the earlier (E3) is superseded.
+      Seats, events, money and home metro come only from bookings that hold seats, so E1 and E3 do not count.
+    model: core_customers
+    given:
+      - input: ref('core_orders')
+        rows:
+          - {order_key: "woo-90", is_transfer: false, customer_hash: h9, identity_source: stripe, created_at: "2024-03-01 15:00:00", business_date: "2024-03-01", platform_era: legacy_event_tickets}
+          - {order_key: "woo-91", is_transfer: true, customer_hash: h9, identity_source: transfer_parent, created_at: "2024-03-09 15:00:00", business_date: "2024-03-09", platform_era: legacy_event_tickets}
+          - {order_key: "woo-92", is_transfer: true, customer_hash: h9, identity_source: transfer_parent, created_at: "2024-03-05 15:00:00", business_date: "2024-03-05", platform_era: legacy_event_tickets}
+      - input: ref('core_bookings')
+        rows:
+          - {booking_key: k90, order_key: "woo-90", event_key: E1, customer_hash: h9, identity_source: stripe, purchase_date: "2024-03-01", booking_kind: purchase, seats: 0, seats_transferred_out: 1, net_seats: 0, realized_revenue: 0, refunded_amount: 0, sns_share: 0}
+          - {booking_key: k91, order_key: "woo-91", event_key: E2, customer_hash: h9, identity_source: transfer_parent, purchase_date: "2024-03-09", booking_kind: transfer_in, seats: 1, seats_transferred_out: 0, net_seats: 1, realized_revenue: 70, refunded_amount: 0, sns_share: 27.068}
+          - {booking_key: k92, order_key: "woo-92", event_key: E3, customer_hash: h9, identity_source: transfer_parent, purchase_date: "2024-03-05", booking_kind: transfer_superseded, seats: 0, seats_transferred_out: 0, net_seats: 0, realized_revenue: 0, refunded_amount: 0, sns_share: 0}
+      - input: ref('core_events')
+        rows:
+          - {event_key: E1, metro_key: boston}
+          - {event_key: E2, metro_key: nashville}
+          - {event_key: E3, metro_key: denver}
+      - input: ref('core_session_orders')
+        rows: []
+      - input: ref('core_sessions')
+        rows: []
+    expect:
+      rows:
+        - {customer_hash: h9, first_purchase_date: "2024-03-01", most_recent_purchase_date: "2024-03-01", first_era: legacy_event_tickets, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 70, lifetime_sns_share: 27.068, home_metro_key: nashville, is_repeat: false, days_first_to_second_purchase: null}

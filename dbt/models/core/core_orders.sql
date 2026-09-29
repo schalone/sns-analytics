@@ -22,6 +22,11 @@
 -- Guests are represented by customer_id = 0, not NULL, so `customer_hash` is forced to NULL for
 -- '0' as well as NULL below, keeping `is_first_order` from ever firing true for the guest bucket.
 
+-- Legacy seat transfers: a transfer order with a root (core_seat_transfers) moved a seat of an earlier
+-- paid order to another event. It is not a purchase: is_transfer is true, transfer_root_order_key names
+-- the original order, it is never is_first_order, and the first-order ranking ignores it. A transfer with
+-- no root is an ordinary order here (is_transfer false).
+
 with cms_items as (
   select order_key,
     countif(item_type = 'ticket') as ticket_items, countif(item_type = 'giftCard') as gift_items, count(*) as items
@@ -95,6 +100,12 @@ with_metro as (
   select u.*, zm.metro_key as billing_metro_key
   from unioned u
   left join zip_metro zm on zm.zip_code = left(u.billing_zip, 5)
+),
+transfer_roots as (
+  select order_key, any_value(root_order_key) as transfer_root_order_key
+  from {{ ref('core_seat_transfers') }}
+  where root_order_key is not null
+  group by order_key
 )
 select
   w.order_key, w.source_system, w.order_number, w.status, w.created_at, w.paid_at, w.business_date, w.order_type,
@@ -104,7 +115,10 @@ select
   w.billing_city, w.billing_state, w.billing_zip, w.billing_metro_key,
   w.stripe_checkout_session_id, w.updated_at,
   {{ platform_era_of_source('w.source_system') }} as platform_era,
-  ci.customer_hash is not null
-    and row_number() over (partition by ci.customer_hash order by w.created_at, w.order_key) = 1 as is_first_order
+  ci.customer_hash is not null and tr.order_key is null
+    and row_number() over (partition by ci.customer_hash, tr.order_key is null order by w.created_at, w.order_key) = 1 as is_first_order,
+  tr.order_key is not null as is_transfer,
+  tr.transfer_root_order_key
 from with_metro w
 left join {{ ref('core_customer_identity') }} ci on ci.order_key = w.order_key
+left join transfer_roots tr on tr.order_key = w.order_key

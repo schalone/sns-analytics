@@ -76,6 +76,12 @@ models:
                 values: [legacy_event_tickets, bronco]
       - name: identity_source
         data_tests: [not_null]
+      - name: is_transfer
+        description: >
+          True for a legacy transfer order with a root: a zero-total order that moved a seat of an earlier paid
+          order (transfer_root_order_key) to another event. Not a purchase: never is_first_order, and excluded
+          from KPI order, ticket-order and seat counts and from customer order counts.
+        data_tests: [not_null]
 
   - name: core_order_items
     columns:
@@ -194,7 +200,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: [cms, stripe, cms_import, woo_propagated, woo_surrogate, unresolved]
+                values: [cms, stripe, cms_import, woo_propagated, woo_surrogate, transfer_parent, unresolved]
 
   - name: core_seat_transfers
     description: >

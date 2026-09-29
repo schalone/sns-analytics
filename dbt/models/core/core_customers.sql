@@ -1,9 +1,18 @@
 -- One row per resolved customer across both eras. Orders that resolved to nobody create no customer.
 -- A woo-cust-<id> key is a registered legacy account whose email was never recovered (is_surrogate).
+-- A legacy transfer order (is_transfer) is not a purchase: it is left out of order counts and ranking
+-- (lifetime_orders, is_repeat, first and second purchase dates, first_era, first order channel). Seats,
+-- events, money and home metro come from the bookings that hold seats: a superseded transfer and a root
+-- line whose every seat moved to a transfer are left out, so the moved seat counts once, at its new event.
 with o as (
   select order_key, customer_hash, identity_source, created_at, business_date, platform_era
   from {{ ref('core_orders') }}
-  where customer_hash is not null and identity_source != 'unresolved'
+  where customer_hash is not null and identity_source != 'unresolved' and not is_transfer
+),
+seat_bookings as (
+  select *
+  from {{ ref('core_bookings') }}
+  where booking_kind != 'transfer_superseded' and (seats > 0 or seats_transferred_out = 0)
 ),
 ranked as (
   select *, row_number() over (partition by customer_hash order by created_at, order_key) as n
@@ -30,13 +39,13 @@ booking_stats as (
     sum(net_seats) as lifetime_seats,
     sum(realized_revenue - refunded_amount) as lifetime_realized_revenue,
     sum(sns_share) as lifetime_sns_share
-  from {{ ref('core_bookings') }}
+  from seat_bookings
   where customer_hash is not null and identity_source != 'unresolved'
   group by customer_hash
 ),
 home as (
   select b.customer_hash, e.metro_key
-  from {{ ref('core_bookings') }} b
+  from seat_bookings b
   join {{ ref('core_events') }} e using (event_key)
   where b.customer_hash is not null and e.metro_key is not null
   group by b.customer_hash, e.metro_key
