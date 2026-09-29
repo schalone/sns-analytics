@@ -2978,6 +2978,53 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
+### Task 11: Transferred seats
+
+Runs BEFORE Task 10. Implements addendum spec §6.8, which holds the definitions and the nine rules; read it first.
+
+**Files:**
+- Modify: `dbt/models/staging/woo/stg_woo__orders.sql` (expose `parent_order_key`)
+- Create: `dbt/models/core/core_seat_transfers.sql`
+- Modify: `dbt/models/core/core_customer_identity.sql`, `core_orders.sql`, `core_order_item_economics.sql`, `core_bookings.sql`, `core_customers.sql`
+- Modify: `dbt/models/marts/mart_daily_kpis.sql`
+- Modify: `dbt/models/core/unit_tests.yml`, `dbt/models/core/schema.yml`, `dbt/models/marts/mart_daily_kpis_unit_tests.yml`, `dbt/models/marts/schema.yml`
+- Create: `dbt/tests/core/assert_transfers_conserve_money.sql`, `dbt/tests/core/assert_transfer_seats_within_purchase.sql`
+- Modify: `docs/runbook.md`, `docs/looker-studio.md`
+
+**Interfaces:**
+- Consumes: `stg_woo__orders` (`order_key, woo_order_id, status, total, created_at, paid_at`), `stg_woo__order_line_items`, `stg_woo__products`, `core_events`, `core_stripe_transactions`, `core_customer_identity`.
+- Produces:
+  - `stg_woo__orders.parent_order_key`: `woo-<parent_id>` or NULL when the archive's `parent_id` is 0 or NULL.
+  - `core_seat_transfers`, grain one ticket line of a transfer order: `order_item_key, order_key, root_order_key, event_key, transferred_at, seats, seats_held, is_superseded, depth`. `root_order_key` is NULL when no paid ancestor exists. `seats_held` is 0 when superseded or rootless.
+  - `core_order_item_economics` and `core_bookings` gain `booking_kind`, `seats_purchased`, `seats_transferred_out`, `transfer_root_order_key`. On a root line `seats` = `seats_purchased − seats_transferred_out`. On a `transfer_in` line `seats` = `seats_held`.
+  - `core_orders` gains `is_transfer BOOL NOT NULL`, `transfer_root_order_key`.
+  - `core_customer_identity.identity_source` gains `transfer_parent`.
+
+**Unit tests to write first.** All on `core_order_item_economics` unless stated. Every expected row in a test carries the same column keys. Rates: shares 0.40 and 0.60.
+
+| Case | Fixture | Expected |
+|---|---|---|
+| A, one of two seats moved | Root R1: total 140, one ticket line, 2 seats, line total 140, event E1, Stripe charge fee 4.36. Transfer C1: parent R1, total 0, one line, 1 seat, line value 70, event E2. | R1 line: `purchase`, seats_purchased 2, seats_transferred_out 1, seats 1, realized 70, fee 2.18, net 67.82, shares 27.128 and 40.692. C1 line: `transfer_in`, seats 1, realized 70, fee 2.18, `fee_source` actual, net 67.82, shares 27.128 and 40.692, event E2, root R1. |
+| B, price differs | Root R2: total 130, 2 seats, line total 130, E1, fee 4.07. Transfers C2a and C2b: parent R2, 1 seat each, line value 80, event E3. | R2 line: seats 0, realized 0, fee 0, net 0, seats_transferred_out 2. Each transfer: realized 65, fee 2.035, net 62.965, shares 25.186 and 37.779. |
+| C, moved twice from the same order | Root R3: total 70, 1 seat, E1, fee 2.33. C3a created day 5 on E2 and C3b created day 9 on E4, both with parent R3. | C3b: `transfer_in`, seats 1, realized 70, fee 2.33, net 67.67. C3a: `transfer_superseded`, seats 0, realized 0, fee 0, cancelled. R3 line: seats 0, realized 0. |
+| D, chain | Root R4: total 70, 1 seat, fee 2.33. C4a parent R4 on E2, created day 5. C4b parent C4a on E5, created day 9. | C4b holds the seat and the money, root R4. C4a superseded. |
+| E, no paid ancestor | Order U1: total 0, no parent, 1 seat, line value 65. Order U2: total 0, parent U1, 1 seat, line value 65. | Both `unpaid_zero_total`, realized 65, fee 0, `fee_source` none, seats 1. |
+| F, root refunded | Root R5: total 70, 1 seat, fee 2.33, Stripe refund 70. Transfer C5 parent R5. | C5: realized 70, refunded 70, fee 2.33, net −2.33, cancelled. R5 line: all zero, seats 0. |
+| G, two lines on the root | Root R6: total 135, line a (key sorts first) 1 seat 70 on E1, line b 1 seat 65 on E6, fee 4.22. Transfer C6: 1 seat. | C6 takes the seat from line a: realized 70, fee 4.22 × 70 / 135. Line a: seats 0, all zero. Line b unchanged: realized 65, fee 4.22 × 65 / 135. |
+
+Further unit tests: `core_customer_identity` (a transfer order takes its root's customer with `identity_source: transfer_parent`; a rootless one resolves as any other order); `core_orders` (`is_transfer` true for transfer orders, false otherwise; a transfer is never `is_first_order`); `core_customers` (a customer with one purchase and two transfers has `lifetime_orders: 1`, `is_repeat: false`, and `lifetime_seats`, `lifetime_events` and money from the bookings that hold seats); `mart_daily_kpis` (a transfer order adds nothing to `orders`, `ticket_orders`, `seats`, `gross_revenue`; its moved `sns_share` is reported on the transfer's business date).
+
+**Data tests.**
+- `assert_transfers_conserve_money.sql`: for every root, realized revenue, refunded amount and processing fee summed over the root's lines and its transfer bookings equal the same sums computed for the root's lines directly from staging and Stripe, within one cent.
+- `assert_transfer_seats_within_purchase.sql`: for every root, seats held by transfers plus seats remaining on its lines equal the seats it bought; no line has negative seats.
+- Existing tests must still pass: `assert_shares_sum_to_net`, `assert_allocation_conserves_money` (adapt its legacy branches so they compare per root family where a transfer is involved), `assert_curve_closes`, `assert_event_economics_matches_bookings`, `assert_daily_kpis_conserves_totals`.
+
+**Report from real data**, counts and sums only, before and after: legacy realized revenue, S&S share and net seats by year; sold-out events by year; customers, repeat customers and the distribution of lifetime orders; bookings by `booking_kind`; unresolved identity by year.
+
+**Commit** by explicit path.
+
+---
+
 ## Out of scope for this plan
 
 - The descriptive analyses (sellouts, underutilisation, booking-curve pace bands, retention cohorts, marketing economics). They are queries over the tables built here and get their own spec.

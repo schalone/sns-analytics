@@ -231,6 +231,40 @@ Pace: `first_sale_days_before`, `days_before_at_25pct`, `days_before_at_50pct`, 
 
 Grain: `customer_hash`, excluding unresolved orders. Columns: `first_purchase_date`, `most_recent_purchase_date`, `first_era`, `eras_seen`, `lifetime_orders`, `lifetime_events`, `lifetime_seats`, `lifetime_realized_revenue`, `lifetime_sns_share`, `home_metro_key` (the metro of most attended events, ties to the most recent), `first_order_channel` (from `core.session_orders` where a session matched), `is_repeat`, `days_first_to_second_purchase`, `is_surrogate` (true for `woo-cust-` keys).
 
+### 6.8 Transferred seats (added 2026-09-28)
+
+Confirmed by the operator on 2026-09-28: the legacy site moved a seat to another event by creating a new order with a total of zero, one per seat, whose parent is the original paid order. Transfers are common. **The instructor who teaches the class attended earns the money**, so the seat and its money follow the transfer.
+
+Measured in the archive (all years): 7,773 transfer orders carrying 7,773 seats; every parent exists; 7,486 point directly at a paid order, 251 reach one through a chain of two or three transfers, 36 never reach a paid order; 260 paid orders have more transfer seats than seats bought (a seat moved more than once, each move pointing at the original order); 18 parents hold tickets for more than one event; the price per seat differs between the original and the new event for 1,173 parents.
+
+Without this rule the model counts the money twice (on the original event through the payment and on the new event through the transfer order's line value) and leaves the seat on the original event.
+
+**Definitions**
+
+- A **transfer order** is a legacy order that counts as paid by status, has a total of zero, has a parent order, and carries at least one ticket line with value.
+- Its **root** is the first ancestor with a total above zero, reached by following parents through other transfer orders, at most five steps. A transfer order with no such ancestor has no root.
+- For each root, its transfer orders of any depth are ranked latest first. Seats are **held** by the latest transfers up to the number of ticket seats the root bought. Earlier transfers beyond that number are **superseded**: their seat moved on again.
+
+**Rules**
+
+1. A held seat counts at the transfer order's event, from the transfer order's date. A superseded transfer holds no seat and no money.
+2. The root's ticket lines give up the held seats, taking them from its lines in order of line key. A root line's seats become the seats bought less the seats given up.
+3. Money follows the seat at the price actually paid: for each seat given up, the root line's realized revenue, refund, processing fee, net distributable and both shares, each divided by the seats that line bought, move to the transfer booking. The transfer order's own line value is not revenue.
+4. The transfer booking takes the root's `fee_source`.
+5. A transfer booking is cancelled when its moved refund reaches its moved realized revenue, or when the transfer order's own status is refunded.
+6. Money is conserved: for every root, the realized revenue, refunds and fees of the root's lines plus those of its transfer bookings equal what the root's lines carried before any transfer.
+7. A transfer order belongs to the root's customer. It is not a purchase: it never counts as an order, a first order or a repeat purchase, and it is excluded from order, ticket-order and seat counts in the KPI mart.
+8. A transfer order with no root, and a zero-total order with ticket value and no parent (332 orders, $32,154), keep their line value as realized revenue with no fee, as before. Their nature is unknown; they are labelled so they can be excluded.
+9. The new platform records transfers on tickets (`transferredFromTicketKey`, status `Transferred`). Its seat rule already follows ticket status. How its money follows a transfer is decided when its data is loaded.
+
+**Columns**
+
+- `core_order_item_economics` and `core_bookings`: `booking_kind` (`purchase` | `transfer_in` | `transfer_superseded` | `unpaid_zero_total`), `seats_purchased`, `seats_transferred_out`, `transfer_root_order_key`.
+- `core_orders`: `is_transfer`, `transfer_root_order_key`.
+- `core_customer_identity.identity_source` gains the value `transfer_parent`.
+
+**Known limit.** The original event's booking curve shows the seats that stayed, from the original purchase date. It does not show a seat as sold and later released.
+
 ## 7. Marts
 
 - `mart.daily_kpis`, `mart.paid_performance`, `mart.orders_reconciliation`: `pre_launch` → `platform_era`.
