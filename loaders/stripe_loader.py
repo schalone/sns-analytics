@@ -40,13 +40,17 @@ def load_stripe(settings: Settings, writer: RawWriter, state: LoadState, full: b
         def step(entity=entity) -> int:
             if not settings.stripe_key:
                 raise RuntimeError("STRIPE_RESTRICTED_KEY is not set")
+            wm = None if full else state.get(SOURCE, entity)
+            if not full and not wm:
+                # Without a watermark an incremental run would page the whole account history. Refuse:
+                # the history load is a deliberate one-off (`python -m loaders run --sources stripe --full`).
+                raise RuntimeError(f"no Stripe watermark for {entity}: run once with --full to load history")
             sdk = api
             if sdk is None:
                 import stripe as sdk  # type: ignore
                 sdk.api_key = settings.stripe_key
-            wm = None if full else state.get(SOURCE, entity)
             kw = {"limit": 100}
-            if wm:   # no watermark, or --full: page the whole account history
+            if wm:   # --full has no watermark: page the whole account history
                 kw["created"] = {"gte": int((wm.updated_at - OVERLAP).timestamp())}
             if entity in EXPAND:
                 kw["expand"] = EXPAND[entity]

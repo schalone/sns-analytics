@@ -60,10 +60,18 @@ def test_full_backfill_has_no_created_filter_and_stores_sanitised_payload():
     assert len(payload["source"]["customer_hash"]) == 64
 
 
-def test_first_incremental_run_without_watermark_loads_full_history():
+def test_incremental_run_without_watermark_refuses_and_never_calls_stripe():
+    # Without a watermark an incremental run would page the whole account history. It must refuse instead:
+    # the history load is a deliberate one-off with --full.
     bq = FakeBqClient(); api = FakeStripe()
-    load_stripe(_settings(), RawWriter(bq, "sipandscript", "r"), LoadState(bq, "sipandscript"), api=api)
-    assert "created" not in api.BalanceTransaction.calls[0]
+    res = load_stripe(_settings(), RawWriter(bq, "sipandscript", "r"), LoadState(bq, "sipandscript"), api=api)
+    assert [r.status for r in res] == ["error"] * 4
+    for r, entity in zip(res, ("balance_transactions", "refunds", "disputes", "payouts")):
+        assert f"no Stripe watermark for {entity}: run once with --full to load history" in r.message
+        assert r.rows == 0
+    for resource in (api.BalanceTransaction, api.Refund, api.Dispute, api.Payout):
+        assert resource.calls == []
+    assert not [l for l in bq.loads if "raw_stripe" in l[0]]
 
 
 def test_incremental_uses_watermark_minus_overlap():
