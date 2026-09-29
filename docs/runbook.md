@@ -41,12 +41,13 @@ those datasets. Without the variable, a local `dbt build` overwrites production 
 ```bash
 cd /Users/stephenchaloner/sns-analytics && . .venv/bin/activate
 export CMS_BASE_URL=https://www.sipandscript.com CMS_EXPORT_TOKEN=...
-python -m loaders run --sources cms,gsc,spend [--full] [--mode daily|hourly]
+python -m loaders run --sources cms,stripe,gsc,spend [--full] [--mode daily|hourly]
 ```
 
 - `--sources` takes a comma list; the CLI's own default is all four (`cms,stripe,gsc,spend`), so name
-  the sources explicitly. Do not run `stripe` from here: the Stripe history load is owned by the
-  economic truth layer plan (see `docs/handoff.md` item 9).
+  the sources explicitly. The Stripe history is loaded and its watermark set, so `stripe` without
+  `--full` loads only what is new. Never pass `--full` with `stripe` unless the whole account history
+  must be reloaded (see below).
 - `--full` ignores the watermark for every selected source and reloads its full history: CMS
   everything; **Stripe pages the whole account history** (every balance transaction, refund, dispute and
   payout since the account opened, not only since the 2026-06-19 launch); Search Console 480 days back;
@@ -68,12 +69,18 @@ retried into the next one.
 
 | Job | Schedule (UTC) | Loaders | dbt |
 |---|---|---|---|
-| `sns-analytics-daily` (`MODE=daily`) | `0 11 * * *` | `python -m loaders run --sources "$SOURCES" --mode daily`; `SOURCES` defaults to `cms,gsc,spend` and is set explicitly on the job by `infra/setup.sh` | `dbt build --target prod` (the whole project) |
+| `sns-analytics-daily` (`MODE=daily`) | `0 11 * * *` | `python -m loaders run --sources "$SOURCES" --mode daily`; `SOURCES` defaults to `cms,stripe,gsc,spend` and is set explicitly on the job by `infra/setup.sh` | `dbt build --target prod` (the whole project) |
 | `sns-analytics-hourly` (`MODE=hourly`) | `30 0-10,12-23 * * *` (skips 11:30, the hour of the daily build, which is a superset) | `python -m loaders run --sources cms --mode hourly` | `dbt build --selector hourly --target prod` |
 
-`stripe` is deliberately not in the daily job's `SOURCES`: with no Stripe watermark a run would page the
-whole account history. The economic truth layer plan adds it (by changing the job's `SOURCES` env var to
-`cms,stripe,gsc,spend`) once its own full-history Stripe load has completed.
+`stripe` is in the daily job's `SOURCES`: the full Stripe history has been loaded and its watermark set,
+so each daily run loads only new Stripe activity. **The deployed job still has the old value
+(`cms,gsc,spend`)** until someone re-runs `infra/setup.sh` or updates the job directly:
+
+```bash
+gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'
+```
+
+Until then the daily job does not load Stripe, and fees, refunds and identity for new orders go stale.
 
 **The hourly selector** (`dbt/selectors.yml`) is every model tagged `hourly` together with all its
 ancestors, minus every model tagged `ga4` and the GA4 source. Hourly-tagged models: `core_orders`,
@@ -277,6 +284,10 @@ Warn-severity tests that pass today but will warn if their condition appears: `a
 relationships test, and the two pinned-fact tests `assert_post_launch_orders_pinned` and
 `assert_post_launch_ticket_revenue_pinned` (warn until the pinned figures are confirmed after the first
 CMS backfill; then raise them to error by deleting their `config(severity='warn')` line).
+`assert_worked_bronco_order_pinned` also passes today and will warn once any new-platform booking is
+more than two days old: it asks for one bronco order to be checked by hand against Stripe
+(`scripts/econ_check_order.py --bronco <order number>`) and pinned in `assert_worked_order.sql`, after which
+the warning test is deleted (see `docs/econ-001-validation.md`).
 
 ## Cost
 

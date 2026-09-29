@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # One Cloud Run job per mode, MODE fixed in the job's env (sns-analytics-daily: MODE=daily,
 # sns-analytics-hourly: MODE=hourly). Loaders never abort the run; dbt builds on whatever loaded.
-#   daily : loaders for $SOURCES (default cms,gsc,spend -- stripe is added by the economic truth layer plan once
-#           its full-history Stripe load is complete), then the whole dbt project.
+#   daily : loaders for $SOURCES (default cms,stripe,gsc,spend; the Stripe history is loaded and its watermark
+#           set, so each run loads Stripe incrementally), then the whole dbt project.
 #   hourly: the CMS loader only, then `dbt build --selector hourly` (CMS-derived models with their staging
 #           ancestors and tests, never the GA4-backed session models).
 set -uo pipefail
 MODE="${MODE:-daily}"
-SOURCES="${SOURCES:-cms,gsc,spend}"
+SOURCES="${SOURCES:-cms,stripe,gsc,spend}"
 DBT_DIR=/app/dbt
 export LOADERS_SUMMARY_FILE="${LOADERS_SUMMARY_FILE:-/tmp/loaders-summary.txt}"
 export DBT_RESULTS_FILE="$DBT_DIR/target/run_results.json"

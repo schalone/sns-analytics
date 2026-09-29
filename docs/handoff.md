@@ -71,7 +71,7 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
    account and its IAM bindings (Secret Manager access is granted per secret on `stripe-restricted-key`,
    `cms-export-token` and `slack-ads-sync-bot-token`, never project-wide), the bucket, the two secret
    placeholders, the Google Ads transfer, **two Cloud Run jobs** — `sns-analytics-daily` (`MODE=daily`,
-   `SOURCES=cms,gsc,spend`) and `sns-analytics-hourly` (`MODE=hourly`), same image, `--max-retries 0` — and
+   `SOURCES=cms,stripe,gsc,spend`) and `sns-analytics-hourly` (`MODE=hourly`), same image, `--max-retries 0` — and
    two schedulers created PAUSED (daily `0 11 * * *`, hourly `30 0-10,12-23 * * *` UTC, empty request body).
    If an older version of the script ever created a single job named `sns-analytics`, delete it
    (`gcloud run jobs delete sns-analytics --region us-east1`). Verify: the script exits 0 and both jobs are
@@ -123,9 +123,10 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
    load pages the **whole account history**, not only since 2026-06-19. The sanitiser that strips personal
    data from Stripe payloads is merged (commit `4d21fe5`). **Order matching for Stripe rows is delivered by
    that plan**; until it lands, `core_stripe_transactions.order_key` is NULL on every row and
-   `mart.mart_orders_reconciliation` compares day totals only. **The daily job does not load Stripe**
-   (`SOURCES=cms,gsc,spend`), so it can never start the history load by accident; once that plan's history
-   load is complete, it adds Stripe to the daily job:
+   `mart.mart_orders_reconciliation` compares day totals only. The Stripe history is now loaded and its
+   watermark set, so `infra/setup.sh` and `jobs/entrypoint.sh` default the daily job to
+   `SOURCES=cms,stripe,gsc,spend`. **A daily job deployed earlier still has `SOURCES=cms,gsc,spend`** and
+   does not load Stripe until the setup script is re-run or the job is updated:
    `gcloud run jobs update sns-analytics-daily --region us-east1 --update-env-vars '^;^SOURCES=cms,stripe,gsc,spend'`.
    Verify (once that plan reports done): `mart.mart_orders_reconciliation` has recent rows with
    `variance_pct` populated. Unblocks: spec §11 criteria 1 and 2; the brief's precondition 2.

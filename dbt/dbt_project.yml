@@ -27,7 +27,7 @@ vars:
   google_ads_enabled: false
   sns_share_rate: 0.40
   instructor_share_rate: 0.60
-  legacy_fee_rate: 0.029          # used only when an order has no Stripe match; reset in Task 10
+  legacy_fee_rate: 0.029          # used only when an order has no Stripe match; matched legacy charges imply 0.0290 (ECON-001, 2026-09-28)
   legacy_fee_fixed: 0.30
   materials_per_seat: 6.00        # instructor-side estimate, informational only
   curve_days: 60                  # booking curve starts this many days before the event, or at first sale if earlier

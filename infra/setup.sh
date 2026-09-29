@@ -56,14 +56,14 @@ fi
 
 echo "## Cloud Run jobs (one per mode; MODE fixed in the job, no overrides, no retries)"
 # Two jobs from the same image, so a scheduler can never override the mode and a failed run is never retried
-# into an overlap with the next one. The daily job's SOURCES excludes stripe until the economic truth layer plan
-# has completed its full-history Stripe load (that plan adds it).
+# into an overlap with the next one. The daily job's SOURCES includes stripe: the full Stripe history is loaded
+# and its watermark set, so each daily run loads Stripe incrementally.
 # env lists use gcloud's alternate delimiter syntax (^;^) because SOURCES itself contains commas
 COMMON_ENV="CMS_BASE_URL=https://www.sipandscript.com;GCP_PROJECT=$PROJECT;SLACK_CHANNEL=C0C459A46ET;LOADERS_SUMMARY_FILE=/tmp/loaders-summary.txt"
 JOB_SECRETS="STRIPE_RESTRICTED_KEY=stripe-restricted-key:latest,CMS_EXPORT_TOKEN=cms-export-token:latest,SLACK_BOT_TOKEN=slack-ads-sync-bot-token:latest"
 JOB_FLAGS=(--region $REGION --service-account $SA --memory 2Gi --task-timeout 3600 --max-retries 0 --set-secrets "$JOB_SECRETS")
 gcloud run jobs deploy $DAILY_JOB --source . "${JOB_FLAGS[@]}" \
-  --set-env-vars "^;^$COMMON_ENV;MODE=daily;SOURCES=cms,gsc,spend"
+  --set-env-vars "^;^$COMMON_ENV;MODE=daily;SOURCES=cms,stripe,gsc,spend"
 IMAGE=$(gcloud run jobs describe $DAILY_JOB --region $REGION --format='value(spec.template.spec.template.spec.containers[0].image)')
 if [ -z "$IMAGE" ]; then echo "ERROR: could not read the image of $DAILY_JOB" >&2; exit 1; fi
 gcloud run jobs deploy $HOURLY_JOB --image "$IMAGE" "${JOB_FLAGS[@]}" \
