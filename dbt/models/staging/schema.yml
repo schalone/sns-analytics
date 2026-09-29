@@ -95,6 +95,8 @@ models:
     columns:
       - name: order_key
         data_tests: [unique, not_null]
+      - name: parent_order_key
+        description: "The archive's parent order as an order key; NULL when parent_id is 0 or NULL."
 
   - name: stg_woo__order_line_items
     columns:

@@ -567,3 +567,64 @@ unit_tests:
         - {customer_hash: h1, is_surrogate: false, first_purchase_date: "2025-01-10", most_recent_purchase_date: "2026-08-01", first_era: legacy_event_tickets, bought_in_both_eras: true, lifetime_orders: 3, lifetime_events: 3, lifetime_seats: 5, lifetime_realized_revenue: 276, lifetime_sns_share: 105.8, home_metro_key: boston, first_order_channel: null, is_repeat: true, days_first_to_second_purchase: 50}
         - {customer_hash: h2, is_surrogate: false, first_purchase_date: "2026-08-02", most_recent_purchase_date: "2026-08-02", first_era: bronco, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 0, lifetime_sns_share: -0.8, home_metro_key: nashville, first_order_channel: "Paid Social", is_repeat: false, days_first_to_second_purchase: null}
         - {customer_hash: "woo-cust-66", is_surrogate: true, first_purchase_date: "2019-08-02", most_recent_purchase_date: "2019-08-02", first_era: legacy_event_tickets, bought_in_both_eras: false, lifetime_orders: 1, lifetime_events: 1, lifetime_seats: 1, lifetime_realized_revenue: 40, lifetime_sns_share: 15, home_metro_key: boston, first_order_channel: null, is_repeat: false, days_first_to_second_purchase: null}
+
+  - name: seat_transfers_find_root_and_hold_seats
+    description: >
+      A transfer order is a paid zero-total legacy order with a parent and a ticket line with value. Its root is
+      the first ancestor with a total above zero, reached through other transfer orders. Per root, transfer lines
+      are ranked latest first and hold seats up to the seats the root bought; the rest are superseded. R1 bought
+      two seats and one moved (held). R3 bought one seat, moved twice from the same order: the later move holds
+      it. R4's seat moved to C4a, then C4a's seat moved to C4b (a chain of two): C4b holds it. U2's parent U1 is a
+      zero-total order with no parent, and T2's parent failed, so neither has a root. Z1 has a parent but no
+      ticket value and is not a transfer.
+    model: core_seat_transfers
+    given:
+      - input: ref('stg_woo__orders')
+        rows:
+          - {order_key: "woo-r1", status: completed, total: 140, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-c1", status: completed, total: 0, parent_order_key: "woo-r1", created_at: "2024-03-05 15:00:00", paid_at: null}
+          - {order_key: "woo-r3", status: completed, total: 70, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-c3a", status: completed, total: 0, parent_order_key: "woo-r3", created_at: "2024-03-05 15:00:00", paid_at: null}
+          - {order_key: "woo-c3b", status: completed, total: 0, parent_order_key: "woo-r3", created_at: "2024-03-09 15:00:00", paid_at: null}
+          - {order_key: "woo-r4", status: completed, total: 70, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-c4a", status: completed, total: 0, parent_order_key: "woo-r4", created_at: "2024-03-05 15:00:00", paid_at: null}
+          - {order_key: "woo-c4b", status: processing, total: 0, parent_order_key: "woo-c4a", created_at: "2024-03-09 15:00:00", paid_at: null}
+          - {order_key: "woo-u1", status: completed, total: 0, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: null}
+          - {order_key: "woo-u2", status: completed, total: 0, parent_order_key: "woo-u1", created_at: "2024-03-05 15:00:00", paid_at: null}
+          - {order_key: "woo-f1", status: failed, total: 70, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: null}
+          - {order_key: "woo-t2", status: completed, total: 0, parent_order_key: "woo-f1", created_at: "2024-03-05 15:00:00", paid_at: null}
+          - {order_key: "woo-z1", status: completed, total: 0, parent_order_key: "woo-r1", created_at: "2024-03-06 15:00:00", paid_at: null}
+      - input: ref('stg_woo__order_line_items')
+        rows:
+          - {order_item_key: "woo-li-r1", order_key: "woo-r1", woo_product_id: p1, quantity: 2, line_total: 140}
+          - {order_item_key: "woo-li-c1", order_key: "woo-c1", woo_product_id: p2, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-r3", order_key: "woo-r3", woo_product_id: p1, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-c3a", order_key: "woo-c3a", woo_product_id: p2, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-c3b", order_key: "woo-c3b", woo_product_id: p3, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-r4", order_key: "woo-r4", woo_product_id: p1, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-c4a", order_key: "woo-c4a", woo_product_id: p2, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-c4b", order_key: "woo-c4b", woo_product_id: p3, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-u1", order_key: "woo-u1", woo_product_id: p1, quantity: 1, line_total: 65}
+          - {order_item_key: "woo-li-u2", order_key: "woo-u2", woo_product_id: p2, quantity: 1, line_total: 65}
+          - {order_item_key: "woo-li-f1", order_key: "woo-f1", woo_product_id: p1, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-t2", order_key: "woo-t2", woo_product_id: p2, quantity: 1, line_total: 70}
+          - {order_item_key: "woo-li-z1", order_key: "woo-z1", woo_product_id: p2, quantity: 1, line_total: 0}
+      - input: ref('stg_woo__products')
+        rows:
+          - {woo_product_id: p1, woo_event_id: "601", product_kind: ticket}
+          - {woo_product_id: p2, woo_event_id: "602", product_kind: ticket}
+          - {woo_product_id: p3, woo_event_id: "604", product_kind: ticket}
+      - input: ref('core_events')
+        rows:
+          - {event_key: "woo-ev-601", wordpress_source_id: "601", event_source: woo_archive}
+          - {event_key: "woo-ev-602", wordpress_source_id: "602", event_source: woo_archive}
+          - {event_key: "woo-ev-604", wordpress_source_id: "604", event_source: woo_archive}
+    expect:
+      rows:
+        - {order_item_key: "woo-li-c1", order_key: "woo-c1", root_order_key: "woo-r1", event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 1, is_superseded: false, depth: 1, hold_rank: 1}
+        - {order_item_key: "woo-li-c3a", order_key: "woo-c3a", root_order_key: "woo-r3", event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 0, is_superseded: true, depth: 1, hold_rank: 2}
+        - {order_item_key: "woo-li-c3b", order_key: "woo-c3b", root_order_key: "woo-r3", event_key: "woo-ev-604", transferred_at: "2024-03-09 15:00:00", seats: 1, seats_held: 1, is_superseded: false, depth: 1, hold_rank: 1}
+        - {order_item_key: "woo-li-c4a", order_key: "woo-c4a", root_order_key: "woo-r4", event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 0, is_superseded: true, depth: 1, hold_rank: 2}
+        - {order_item_key: "woo-li-c4b", order_key: "woo-c4b", root_order_key: "woo-r4", event_key: "woo-ev-604", transferred_at: "2024-03-09 15:00:00", seats: 1, seats_held: 1, is_superseded: false, depth: 2, hold_rank: 1}
+        - {order_item_key: "woo-li-u2", order_key: "woo-u2", root_order_key: null, event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 0, is_superseded: false, depth: null, hold_rank: null}
+        - {order_item_key: "woo-li-t2", order_key: "woo-t2", root_order_key: null, event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 0, is_superseded: false, depth: null, hold_rank: null}

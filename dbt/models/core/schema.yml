@@ -196,6 +196,30 @@ models:
               arguments:
                 values: [cms, stripe, cms_import, woo_propagated, woo_surrogate, unresolved]
 
+  - name: core_seat_transfers
+    description: >
+      One row per ticket line of a legacy transfer order: a paid zero-total order with a parent and a ticket
+      line with value, created when the legacy site moved a seat to another event. root_order_key is the
+      original paid order (NULL when none is reachable within five steps). Per root, the latest transfers hold
+      seats up to the seats the root bought; the rest are superseded and hold nothing.
+    columns:
+      - name: order_item_key
+        data_tests: [unique, not_null]
+      - name: order_key
+        data_tests: [not_null]
+      - name: seats_held
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+      - name: depth
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 5
+
   - name: core_order_item_economics
     columns:
       - name: order_item_key
