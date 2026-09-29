@@ -10,14 +10,16 @@ unit_tests:
       two days. An ad hoc Stripe charge (no CMS order) on day 1 never enters orders_charged_amount. A
       legacy order and its matched charge on a legacy-era day carry no refund tracking at all
       (orders_refunded_amount is NULL there). A second bronco day with a real gap between what was
-      charged and what Stripe shows is flagged.
+      charged and what Stripe shows is flagged. A legacy transfer order (is_transfer: a zero-total order that
+      moved a seat) is counted in transfer_orders and not in cms_orders.
     model: mart_orders_reconciliation
     given:
       - input: ref('core_orders')
         rows:
-          - {order_key: O1, business_date: "2026-07-01", platform_era: bronco, gross_revenue: 100, net_revenue: 0}
-          - {order_key: O3, business_date: "2026-07-10", platform_era: bronco, gross_revenue: 100, net_revenue: 100}
-          - {order_key: L1, business_date: "2025-01-10", platform_era: legacy_event_tickets, gross_revenue: 50, net_revenue: 50}
+          - {order_key: O1, is_transfer: false, business_date: "2026-07-01", platform_era: bronco, gross_revenue: 100, net_revenue: 0}
+          - {order_key: O3, is_transfer: false, business_date: "2026-07-10", platform_era: bronco, gross_revenue: 100, net_revenue: 100}
+          - {order_key: L1, is_transfer: false, business_date: "2025-01-10", platform_era: legacy_event_tickets, gross_revenue: 50, net_revenue: 50}
+          - {order_key: L2, is_transfer: true, business_date: "2025-01-10", platform_era: legacy_event_tickets, gross_revenue: 0, net_revenue: 0}
       - input: ref('core_stripe_transactions')
         rows:
           - {txn_id: t1, type: payment, source_object: charge, business_date: "2026-07-01", amount: 100, fee: 3.20, net: 96.80, order_key: O1, match_method: checkout_session}
@@ -34,16 +36,17 @@ unit_tests:
         # grouped identically to `charge` throughout the model, so no expected value here depends on
         # which of the two it is); t3's 10 is ad hoc and excluded from both sides of the
         # charged-amount comparison, so it shows up only as stripe_adhoc_amount.
-        - {business_date: "2026-07-01", platform_era: bronco, variance_amount: 0, variance_pct: 0.0, flagged: false, stripe_adhoc_amount: 10, orders_refunded_amount: 0, stripe_refunded_amount: 0, refund_variance_amount: 0}
+        - {business_date: "2026-07-01", platform_era: bronco, cms_orders: 1, transfer_orders: 0, variance_amount: 0, variance_pct: 0.0, flagged: false, stripe_adhoc_amount: 10, orders_refunded_amount: 0, stripe_refunded_amount: 0, refund_variance_amount: 0}
         # Day 3 (bronco): no order and no charge/payment transaction that day, only the refund of O1;
         # orders_refunded_amount (from core_refunds, by the refund's own date) matches
         # stripe_refunded_amount (from core_stripe_transactions, by the transaction's own date)
         # exactly, so refund_variance_amount is 0. variance_pct is NULL (no Stripe charge that day),
         # so flagged is false, not NULL.
-        - {business_date: "2026-07-03", platform_era: bronco, variance_amount: 0, variance_pct: null, flagged: false, stripe_adhoc_amount: 0, orders_refunded_amount: 100, stripe_refunded_amount: 100, refund_variance_amount: 0}
-        # The legacy day: L1's 50 matches t4's 50 exactly; orders_refunded_amount is NULL (the archive
+        - {business_date: "2026-07-03", platform_era: bronco, cms_orders: 0, transfer_orders: 0, variance_amount: 0, variance_pct: null, flagged: false, stripe_adhoc_amount: 0, orders_refunded_amount: 100, stripe_refunded_amount: 100, refund_variance_amount: 0}
+        # The legacy day: L1's 50 matches t4's 50 exactly; L2 is a transfer order, so cms_orders is 1 and
+        # transfer_orders 1; orders_refunded_amount is NULL (the archive
         # carries no refund dates), so refund_variance_amount is NULL too.
-        - {business_date: "2025-01-10", platform_era: legacy_event_tickets, variance_amount: 0, variance_pct: 0.0, flagged: false, stripe_adhoc_amount: 0, orders_refunded_amount: null, stripe_refunded_amount: 0, refund_variance_amount: null}
+        - {business_date: "2025-01-10", platform_era: legacy_event_tickets, cms_orders: 1, transfer_orders: 1, variance_amount: 0, variance_pct: 0.0, flagged: false, stripe_adhoc_amount: 0, orders_refunded_amount: null, stripe_refunded_amount: 0, refund_variance_amount: null}
         # A second bronco day: O3 charged 100, Stripe only shows 90 -- a real 10/90 = 0.111111... gap,
         # over the 1% threshold, so this one is flagged.
-        - {business_date: "2026-07-10", platform_era: bronco, variance_amount: 10, variance_pct: 0.111111, flagged: true, stripe_adhoc_amount: 0, orders_refunded_amount: 0, stripe_refunded_amount: 0, refund_variance_amount: 0}
+        - {business_date: "2026-07-10", platform_era: bronco, cms_orders: 1, transfer_orders: 0, variance_amount: 10, variance_pct: 0.111111, flagged: true, stripe_adhoc_amount: 0, orders_refunded_amount: 0, stripe_refunded_amount: 0, refund_variance_amount: 0}

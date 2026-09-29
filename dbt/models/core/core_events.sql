@@ -113,11 +113,12 @@ unioned as (
 select u.*,
   greatest(u.capacity - u.seats_sold, 0) as seats_available,
   u.event_date is not null as has_event_date,
-  -- An undated legacy-only event (~1,968 of them, checked 2026-09-27 -- 1,966 ticket
-  -- products whose tribe_wooticket_for_event id has no matching row in stg_woo__events at all,
-  -- plus 2 ticket products whose archive event row has no date) is legacy_event_tickets regardless
-  -- of date; every other row -- CMS or archive, dated -- goes by its event_date against the launch
-  -- boundary. A CMS row with a null event_date falls to bronco through the macro's else branch.
-  case when u.event_date is null and u.event_source = 'woo_archive' then 'legacy_event_tickets'
+  -- An undated event that came from WordPress (it has a wordpress_source_id) is legacy_event_tickets whatever
+  -- its source: the ~1,968 undated legacy-only events (checked 2026-09-27 -- 1,966 ticket products whose
+  -- tribe_wooticket_for_event id has no matching row in stg_woo__events at all, plus 2 ticket products whose
+  -- archive event row has no date) and any undated CMS event imported from WordPress. Every other row goes by
+  -- its event_date against the launch boundary; an undated CMS event with no WordPress id falls to bronco
+  -- through the macro's else branch.
+  case when u.event_date is null and u.wordpress_source_id is not null then 'legacy_event_tickets'
        else {{ platform_era_of_date('u.event_date') }} end as platform_era
 from unioned u

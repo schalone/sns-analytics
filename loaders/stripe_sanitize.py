@@ -26,7 +26,9 @@ ID_FIELDS: dict[str, tuple[str, ...]] = {
     "refund": ("charge", "payment_intent"),
     "dispute": ("charge", "payment_intent"),
 }
-METADATA_KEYS = ("CheckoutSessionKey", "OrderNumber", "EventKey", "TicketCount", "AdHocChargeGuid", "Type", "order_id", "order_key")
+# The WooCommerce `order_key` is not kept: nothing reads it, and with the order id it opened the order on the
+# legacy site, so it is a credential.
+METADATA_KEYS = ("CheckoutSessionKey", "OrderNumber", "EventKey", "TicketCount", "AdHocChargeGuid", "Type", "order_id")
 EMAIL_METADATA_KEYS = ("customer_email", "Customer Email")
 ORDER_REF = re.compile(r"Order #?(\d+)")
 

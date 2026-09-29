@@ -3,10 +3,11 @@ import json
 from loaders.stripe_sanitize import customer_hash, sanitize
 
 # Every one of these strings is planted in the fixture below and must never survive sanitising.
+# "wc_order_abc" is the WooCommerce order_key: with the order id it opened the order on the legacy site.
 SENTINELS = [
     "jane@example.com", "Jane@Example.com", "Jane Q Public", "+16175550100", "12 Elm Street", "02108",
     "4242", "fp_secret", "pm_card_secret", "cus_secret", "sig_secret", "Calligraphy at The Pub", "receipts/secret",
-    "99887", "55443",
+    "99887", "55443", "wc_order_abc",
 ]
 
 
@@ -70,7 +71,7 @@ def test_charge_keeps_allowlisted_fields_and_derived_values():
     src = out["source"]
     assert src["id"] == "ch_1" and src["object"] == "charge" and src["payment_intent"] == "pi_1"
     assert src["metadata"] == {
-        "order_id": "70123", "order_key": "wc_order_abc",
+        "order_id": "70123",
         "CheckoutSessionKey": "22222222-2222-2222-2222-222222222222", "OrderNumber": "SNS-26-000001",
         "EventKey": "77777777-7777-7777-7777-777777777777", "TicketCount": "2",
     }

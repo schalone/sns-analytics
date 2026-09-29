@@ -132,7 +132,10 @@ models:
               arguments:
                 values: [legacy_event_tickets, bronco]
       - name: cms_orders
-        description: Count of core_orders rows on this business_date, both eras (the name is kept from when this mart covered only the webapp; in the legacy era it counts archive orders).
+        description: Count of core_orders rows on this business_date, both eras, excluding legacy transfer orders (the name is kept from when this mart covered only the webapp; in the legacy era it counts archive orders).
+        data_tests: [not_null]
+      - name: transfer_orders
+        description: Legacy transfer orders (core_orders.is_transfer) on this business_date. They are not purchases and are not in cms_orders.
         data_tests: [not_null]
       - name: paid_orders
         description: Orders with gross_revenue > 0, by the order's own business_date.

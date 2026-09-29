@@ -66,8 +66,9 @@
 -- ranges share, so a transfer holding seats from two root lines gets the sum, and several transfers taking
 -- seats from one root line each get per-seat x their own seats. Money is conserved per root.
 -- A transfer_in line is cancelled when its moved refund reaches its moved realized revenue, or when the
--- transfer order's own status is refunded. A root line whose every seat was given up has seats 0 and is not
--- cancelled.
+-- transfer order's own status is refunded. In the second case, when the root was not refunded, the transfer
+-- line still keeps the money moved from the root: that money was paid and not returned, only the seat is gone.
+-- A root line whose every seat was given up has seats 0 and is not cancelled.
 with event_by_legacy_id as (
   select wordpress_source_id as woo_event_id, event_key
   from {{ ref('core_events') }}

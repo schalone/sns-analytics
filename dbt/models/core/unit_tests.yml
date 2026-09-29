@@ -117,9 +117,9 @@ unit_tests:
       # compile and would silently skip comparing columns absent from row 1. All six rows below
       # therefore carry the same 14 keys, in the same order, with the true computed value (title,
       # venue_key, instructor_key, wordpress_source_id, metro_key are null where the underlying data
-      # gives no value) rather than the brief's originally sparser per-row column sets.
+      # gives no value), even where the rule under test concerns only a few of them.
       #
-      # Fix round 1: rows 3 and 4 cover the CMS ticket_price=0 fallback. Row 3 (wordpress_source_id
+      # Rows 3 and 4 cover the CMS ticket_price=0 fallback. Row 3 (wordpress_source_id
       # "800", a new archive event/product not reused from 600/700 so the existing 600/700 expected
       # rows are unaffected) has ticket_price: 0 and an archive price of 45 (no order line item on
       # event 800, so the archive price is woo_products.regular_price = event_cost = 45, not a
@@ -176,6 +176,88 @@ unit_tests:
     expect:
       rows:
         - {event_key: "eeeeeeee-0000-0000-0000-000000000002", seats_sold: 3, seats_available: 17}
+
+  - name: events_undated_wordpress_event_is_legacy
+    description: >
+      An event with no date that came from WordPress (it has a wordpress_source_id) is legacy_event_tickets
+      whatever its source, CMS or archive. An undated CMS event with no WordPress id falls to bronco.
+    model: core_events
+    given:
+      - input: ref('stg_cms__events')
+        rows:
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000009", title: "Undated import", event_date: null, time_zone: "America/New_York", venue_key: v1, capacity: 10, ticket_price: 50, wordpress_source_id: "900", status: Published}
+          - {event_key: "eeeeeeee-0000-0000-0000-000000000010", title: "Undated new", event_date: null, time_zone: "America/New_York", venue_key: v1, capacity: 10, ticket_price: 50, wordpress_source_id: null, status: Published}
+      - input: ref('stg_cms__tickets')
+        rows: []
+      - input: ref('stg_cms__orders')
+        rows: []
+      - input: ref('core_venues')
+        rows:
+          - {venue_key: v1, metro_key: m1, wordpress_source_id: null}
+      - input: ref('core_instructors')
+        rows: []
+      - input: ref('stg_woo__events')
+        rows: []
+      - input: ref('stg_woo__products')
+        rows: []
+      - input: ref('stg_woo__orders')
+        rows: []
+      - input: ref('stg_woo__order_line_items')
+        rows: []
+    expect:
+      rows:
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000009", platform_era: legacy_event_tickets, has_event_date: false}
+        - {event_key: "eeeeeeee-0000-0000-0000-000000000010", platform_era: bronco, has_event_date: false}
+
+  - name: refunds_on_imported_orders_are_legacy
+    description: >
+      A refund's era is its order's era. A refund on a CMS order imported from WordPress (source
+      'wordpressImport', which core_orders leaves out) is legacy_event_tickets; only a refund with no order at
+      all defaults to bronco.
+    model: core_refunds
+    given:
+      - input: ref('stg_cms__refunds')
+        rows:
+          - {refund_key: r1, order_key: web1, amount: 10, status: Succeeded, created_at: "2026-09-01 00:00:00"}
+          - {refund_key: r2, order_key: imp1, amount: 10, status: Succeeded, created_at: "2026-09-01 00:00:00"}
+          - {refund_key: r3, order_key: null, amount: 10, status: Succeeded, created_at: "2026-09-01 00:00:00"}
+      - input: ref('core_orders')
+        rows:
+          - {order_key: web1, platform_era: bronco}
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: web1, source: webapp}
+          - {order_key: imp1, source: wordpressImport}
+    expect:
+      rows:
+        - {refund_key: r1, platform_era: bronco}
+        - {refund_key: r2, platform_era: legacy_event_tickets}
+        - {refund_key: r3, platform_era: bronco}
+
+  - name: tickets_on_imported_orders_are_legacy
+    description: >
+      A ticket's era is its order's era. A ticket on a CMS order imported from WordPress (source
+      'wordpressImport', which core_orders leaves out) is legacy_event_tickets; only a ticket with no order at
+      all defaults to bronco.
+    model: core_tickets
+    given:
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: k1, order_key: web1, status: Paid}
+          - {ticket_key: k2, order_key: imp1, status: Paid}
+          - {ticket_key: k3, order_key: null, status: Paid}
+      - input: ref('core_orders')
+        rows:
+          - {order_key: web1, platform_era: bronco}
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: web1, source: webapp}
+          - {order_key: imp1, source: wordpressImport}
+    expect:
+      rows:
+        - {ticket_key: k1, platform_era: bronco}
+        - {ticket_key: k2, platform_era: legacy_event_tickets}
+        - {ticket_key: k3, platform_era: bronco}
 
   - name: order_items_legacy_event_join_is_deduplicated
     description: Two core_events rows can share a wordpress_source_id (e.g. a CMS-imported event and its archive-only counterpart); the legacy branch must resolve to one line item, carrying the CMS event's key, not one row per matching event.
@@ -582,10 +664,8 @@ unit_tests:
           - {event_key: E3, snapshot_date: "2026-01-15", days_until_event: 0, cumulative_seats: 0, pct_sold: 0, ad_spend_that_day: 0, has_spend_data_that_day: false}
     expect:
       # dbt's unit-test compiler derives the comparison column set from the first expected row and
-      # every row must supply it. E3's and E4's values below for contribution_per_available_seat,
-      # contribution_per_sold_seat, days_before_at_50pct and days_before_at_75pct are computed by
-      # hand from the rules, filling the columns the brief's rows left out; none of the brief's
-      # stated values changed.
+      # every row must supply it, so every row states every column. Each value is computed by hand from
+      # the rules: E3 and E4 have no curve or no spend data, so their contribution and pace columns are NULL.
       rows:
         - {event_key: E1, weekday: Thursday, is_weekend: false, month: 9, season: fall, start_hour_local: 18, seats_sold: 10, bookings: 2, customers: 2, utilisation: 1.0, utilisation_band: "95-100", sold_out: true, realized_revenue: 630, processing_fee: 20, fee_actual_share: 1.0, net_distributable: 610, sns_share: 244, instructor_share: 366, instructor_materials_estimate: 60, allocated_ad_spend: 15, has_ad_spend_data: true, sns_contribution_before_ads: 244, sns_contribution: 229, sns_share_per_available_seat: 24.4, sns_share_per_sold_seat: 24.4, contribution_per_available_seat: 22.9, contribution_per_sold_seat: 22.9, first_sale_days_before: 5, days_before_at_25pct: 5, days_before_at_50pct: 1, days_before_at_75pct: 1, days_before_at_sellout: 1}
         - {event_key: E2, weekday: Saturday, is_weekend: true, month: 5, season: spring, start_hour_local: 18, seats_sold: 3, bookings: 1, customers: 1, utilisation: null, utilisation_band: null, sold_out: false, realized_revenue: 150, processing_fee: 5, fee_actual_share: 0.0, net_distributable: 145, sns_share: 58, instructor_share: 87, instructor_materials_estimate: 18, allocated_ad_spend: null, has_ad_spend_data: false, sns_contribution_before_ads: 58, sns_contribution: null, sns_share_per_available_seat: null, sns_share_per_sold_seat: 19.333333, contribution_per_available_seat: null, contribution_per_sold_seat: null, first_sale_days_before: 1, days_before_at_25pct: null, days_before_at_50pct: null, days_before_at_75pct: null, days_before_at_sellout: null}

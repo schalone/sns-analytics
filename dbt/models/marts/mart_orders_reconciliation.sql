@@ -5,9 +5,13 @@
 -- Covers the whole history, both eras. The 1% variance flag applies only in the bronco era, where
 -- Stripe is the payment processor of record; the legacy era's useful number is stripe_match_rate,
 -- the share of paid archive orders that found a Stripe charge.
+--
+-- cms_orders counts the day's orders except legacy transfer orders (core_orders.is_transfer: a zero-total order
+-- that moved a seat to another class, not a purchase), which are counted in transfer_orders instead.
 with orders as (
   select business_date,
-    count(*) as cms_orders,
+    countif(not is_transfer) as cms_orders,
+    countif(is_transfer) as transfer_orders,
     countif(gross_revenue > 0) as paid_orders,
     sum(gross_revenue) as orders_charged_amount,
     sum(net_revenue) as cms_net_revenue
@@ -41,7 +45,8 @@ stripe as (
 refunds as (
   -- Bronco only: the legacy archive carries no refund dates at all, so there is nothing to bucket
   -- by refund date for a legacy-era business_date (handled by the era check in `final` below, not by
-  -- filtering core_refunds here -- it already holds only CMS/bronco refunds).
+  -- filtering core_refunds here -- it holds only refunds recorded in the CMS, which since the cutover
+  -- include refunds of imported legacy orders; Stripe records those too, so both sides still match).
   select business_date, sum(amount) as refunded_amount
   from {{ ref('core_refunds') }}
   where status = 'Succeeded'
@@ -50,6 +55,7 @@ refunds as (
 joined as (
   select coalesce(o.business_date, s.business_date, r.business_date) as business_date,
     coalesce(o.cms_orders, 0) as cms_orders,
+    coalesce(o.transfer_orders, 0) as transfer_orders,
     coalesce(o.paid_orders, 0) as paid_orders,
     coalesce(o.orders_charged_amount, 0) as orders_charged_amount,
     coalesce(o.cms_net_revenue, 0) as cms_net_revenue,
@@ -82,7 +88,7 @@ variance as (
   from final
 )
 select business_date, platform_era,
-  cms_orders, paid_orders, orders_charged_amount, cms_net_revenue,
+  cms_orders, transfer_orders, paid_orders, orders_charged_amount, cms_net_revenue,
   orders_matched_to_stripe, stripe_match_rate,
   stripe_charges, stripe_charged_amount, stripe_adhoc_amount, stripe_refunded_amount,
   stripe_fees, stripe_net, stripe_gross_less_refunds,
