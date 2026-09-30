@@ -12,8 +12,10 @@ with expected as (
     struct('259204', 59, 2)
   ])
 ),
+-- One event per WordPress id, the rule core_order_item_economics uses: a CMS event wins over an archive one.
 events as (
   select wordpress_source_id, event_key from {{ ref('core_events') }} where wordpress_source_id is not null
+  qualify row_number() over (partition by wordpress_source_id order by if(event_source = 'cms', 0, 1), event_key) = 1
 )
 select x.wordpress_source_id, if(e.event_key is null, 'missing', 'mismatch') as problem
 from expected x

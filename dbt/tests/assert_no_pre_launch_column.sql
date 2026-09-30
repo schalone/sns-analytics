@@ -1,10 +1,11 @@
 -- The column pre_launch was replaced by platform_era. It must not exist in any dataset dbt writes.
--- The `region-us` project-level INFORMATION_SCHEMA (brief's original form) needs
+-- A migration guard: delete this test once production has been rebuilt without pre_launch.
+-- The `region-us` project-level INFORMATION_SCHEMA (the first form of this test) needs
 -- bigquery.tables.list/get at the dataset level across the whole region; this service account
 -- doesn't have it (Access Denied, verified 2026-09-27). Dataset-scoped INFORMATION_SCHEMA.COLUMNS,
 -- unioned over the three datasets this project writes, needs only the per-dataset access dbt
 -- already has to build into them, and checks the identical thing.
--- Code review fix round 1: this query has no ref()/source() of its own, so without an explicit
+-- This query has no ref()/source() of its own, so without an explicit
 -- dependency the DAG scheduler has no edge forcing it to run after the core/mart/ops datasets
 -- exist (a thread could pick it up first in a fresh, never-seeded DBT_SCHEMA_PREFIX, and
 -- INFORMATION_SCHEMA.COLUMNS against a not-yet-created dataset is a hard BigQuery error, not an
