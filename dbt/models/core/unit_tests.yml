@@ -1200,7 +1200,11 @@ unit_tests:
       and a reversal of 50 (net 0; the dispute fee and its reversal cancel out too). woo-d3: a refund of 30 and a
       refund_failure of +30 (refunded 0). woo-d4: a root that bought 2 seats with a withdrawal of 70 gives one seat to
       a transfer; the dispute moves per seat with the seat, like a refund. Bronco order B: disputes apply to
-      new-platform orders too.
+      new-platform orders too. woo-d5: a legacy order with status refunded, no matched Stripe refund, and a lost
+      chargeback of its full 69; the status fallback refunds only what the dispute has not already taken
+      (greatest(realized - disputed, 0) = 0), so the money is deducted once, and the item stays cancelled. woo-d6: the
+      same fallback on a root that bought 2 seats for 140 with a withdrawal of 70: refunded 140 - 70 = 70, and the
+      transfer that takes one seat carries half of each amount and is cancelled like the seat that stayed.
     model: core_order_item_economics
     given:
       - input: ref('stg_cms__orders')
@@ -1228,6 +1232,10 @@ unit_tests:
           - {txn_id: t10, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: "woo-d4", amount: -70, fee: 15, net: -85}
           - {txn_id: t11, type: charge, reporting_category: charge, source_object: charge, order_key: B, amount: 50, fee: 1.75, net: 48.25}
           - {txn_id: t12, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: B, amount: -50, fee: 15, net: -65}
+          - {txn_id: t13, type: charge, reporting_category: charge, source_object: charge, order_key: "woo-d5", amount: 69, fee: 2.3, net: 66.7}
+          - {txn_id: t14, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: "woo-d5", amount: -69, fee: 15, net: -84}
+          - {txn_id: t15, type: charge, reporting_category: charge, source_object: charge, order_key: "woo-d6", amount: 140, fee: 4.36, net: 135.64}
+          - {txn_id: t16, type: adjustment, reporting_category: dispute, source_object: dispute, order_key: "woo-d6", amount: -70, fee: 15, net: -85}
       - input: ref('stg_woo__orders')
         rows:
           - {order_key: "woo-d1", status: completed, total: 100, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
@@ -1235,6 +1243,9 @@ unit_tests:
           - {order_key: "woo-d3", status: completed, total: 100, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
           - {order_key: "woo-d4", status: completed, total: 140, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
           - {order_key: "woo-d4t", status: completed, total: 0, parent_order_key: "woo-d4", created_at: "2024-03-05 15:00:00", paid_at: null}
+          - {order_key: "woo-d5", status: refunded, total: 69, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-d6", status: refunded, total: 140, parent_order_key: null, created_at: "2024-03-01 15:00:00", paid_at: "2024-03-01 15:00:30"}
+          - {order_key: "woo-d6t", status: completed, total: 0, parent_order_key: "woo-d6", created_at: "2024-03-05 15:00:00", paid_at: null}
       - input: ref('stg_woo__order_line_items')
         rows:
           - {order_item_key: "woo-li-d1a", order_key: "woo-d1", woo_product_id: p1, quantity: 1, subtotal: 60, line_total: 60}
@@ -1243,6 +1254,9 @@ unit_tests:
           - {order_item_key: "woo-li-d3", order_key: "woo-d3", woo_product_id: p1, quantity: 1, subtotal: 100, line_total: 100}
           - {order_item_key: "woo-li-d4", order_key: "woo-d4", woo_product_id: p1, quantity: 2, subtotal: 140, line_total: 140}
           - {order_item_key: "woo-li-d4t", order_key: "woo-d4t", woo_product_id: p2, quantity: 1, subtotal: 70, line_total: 70}
+          - {order_item_key: "woo-li-d5", order_key: "woo-d5", woo_product_id: p1, quantity: 1, subtotal: 69, line_total: 69}
+          - {order_item_key: "woo-li-d6", order_key: "woo-d6", woo_product_id: p1, quantity: 2, subtotal: 140, line_total: 140}
+          - {order_item_key: "woo-li-d6t", order_key: "woo-d6t", woo_product_id: p2, quantity: 1, subtotal: 70, line_total: 70}
       - input: ref('stg_woo__products')
         rows:
           - {woo_product_id: p1, woo_event_id: "601", product_kind: ticket}
@@ -1254,6 +1268,7 @@ unit_tests:
       - input: ref('core_seat_transfers')
         rows:
           - {order_item_key: "woo-li-d4t", order_key: "woo-d4t", root_order_key: "woo-d4", event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 1, is_superseded: false, depth: 1, hold_rank: 1}
+          - {order_item_key: "woo-li-d6t", order_key: "woo-d6t", root_order_key: "woo-d6", event_key: "woo-ev-602", transferred_at: "2024-03-05 15:00:00", seats: 1, seats_held: 1, is_superseded: false, depth: 1, hold_rank: 1}
     expect:
       # woo-d1: fee 3.2 + 15 = 18.2, weights 0.6 / 0.4. Line a: disputed 30, fee 10.92, net 60 - 30 - 10.92 = 19.08,
       # shares 7.632 / 11.448. Line b: disputed 20, fee 7.28, net 40 - 20 - 7.28 = 12.72, shares 5.088 / 7.632.
@@ -1262,6 +1277,11 @@ unit_tests:
       # woo-d4: realized 140, disputed 70, fee 4.36 + 15 = 19.36; per seat 70 / 35 / 9.68, net 70 - 35 - 9.68 = 25.32,
       # shares 10.128 / 15.192, on the root's remaining seat and on the transfer booking alike.
       # B: realized 50, disputed 50, fee 1.75 + 15 = 16.75, net -16.75, shares -6.7 / -10.05; ticket Active, not cancelled.
+      # woo-d5: realized 69, disputed 69, refunded greatest(69 - 69, 0) = 0, fee 2.3 + 15 = 17.3, net -17.3,
+      # shares -6.92 / -10.38; status refunded, cancelled.
+      # woo-d6: realized 140, disputed 70, refunded greatest(140 - 70, 0) = 70, fee 4.36 + 15 = 19.36; per seat
+      # 70 / 35 / 35 / 9.68, net 70 - 35 - 35 - 9.68 = -9.68, shares -3.872 / -5.808, on the root's remaining seat
+      # and on the transfer booking alike; both cancelled.
       rows:
         - {order_item_key: B1, booking_kind: purchase, seats: 1, realized_revenue: 50, refunded_amount: 0, disputed_amount: 50, processing_fee: 16.75, net_distributable: -16.75, sns_share: -6.7, instructor_share: -10.05, is_cancelled: false, transfer_root_order_key: null}
         - {order_item_key: "woo-li-d1a", booking_kind: purchase, seats: 1, realized_revenue: 60, refunded_amount: 0, disputed_amount: 30, processing_fee: 10.92, net_distributable: 19.08, sns_share: 7.632, instructor_share: 11.448, is_cancelled: false, transfer_root_order_key: null}
@@ -1270,6 +1290,9 @@ unit_tests:
         - {order_item_key: "woo-li-d3", booking_kind: purchase, seats: 1, realized_revenue: 100, refunded_amount: 0, disputed_amount: 0, processing_fee: 3.2, net_distributable: 96.8, sns_share: 38.72, instructor_share: 58.08, is_cancelled: false, transfer_root_order_key: null}
         - {order_item_key: "woo-li-d4", booking_kind: purchase, seats: 1, realized_revenue: 70, refunded_amount: 0, disputed_amount: 35, processing_fee: 9.68, net_distributable: 25.32, sns_share: 10.128, instructor_share: 15.192, is_cancelled: false, transfer_root_order_key: null}
         - {order_item_key: "woo-li-d4t", booking_kind: transfer_in, seats: 1, realized_revenue: 70, refunded_amount: 0, disputed_amount: 35, processing_fee: 9.68, net_distributable: 25.32, sns_share: 10.128, instructor_share: 15.192, is_cancelled: false, transfer_root_order_key: "woo-d4"}
+        - {order_item_key: "woo-li-d5", booking_kind: purchase, seats: 1, realized_revenue: 69, refunded_amount: 0, disputed_amount: 69, processing_fee: 17.3, net_distributable: -17.3, sns_share: -6.92, instructor_share: -10.38, is_cancelled: true, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d6", booking_kind: purchase, seats: 1, realized_revenue: 70, refunded_amount: 35, disputed_amount: 35, processing_fee: 9.68, net_distributable: -9.68, sns_share: -3.872, instructor_share: -5.808, is_cancelled: true, transfer_root_order_key: null}
+        - {order_item_key: "woo-li-d6t", booking_kind: transfer_in, seats: 1, realized_revenue: 70, refunded_amount: 35, disputed_amount: 35, processing_fee: 9.68, net_distributable: -9.68, sns_share: -3.872, instructor_share: -5.808, is_cancelled: true, transfer_root_order_key: "woo-d6"}
 
   - name: event_economics_counts_seat_holding_bookings
     description: >

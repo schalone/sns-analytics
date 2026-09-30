@@ -24,7 +24,9 @@ lines as (
 ),
 direct as (
   select r.order_key, l.realized_revenue,
-    case when coalesce(s.refunded, 0) > 0 then s.refunded when o.status = 'refunded' then l.realized_revenue else 0 end as refunded_amount,
+    -- status fallback: what the order realized less what its dispute already took back, floored at 0
+    case when coalesce(s.refunded, 0) > 0 then s.refunded
+         when o.status = 'refunded' then greatest(l.realized_revenue - coalesce(s.disputed, 0), 0) else 0 end as refunded_amount,
     coalesce(s.disputed, 0) as disputed_amount,
     case when coalesce(s.has_charge, false) then s.fee
          else l.realized_revenue * {{ var('legacy_fee_rate') }} + {{ var('legacy_fee_fixed') }} end as processing_fee

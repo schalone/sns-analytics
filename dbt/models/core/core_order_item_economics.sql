@@ -10,10 +10,12 @@
 --
 -- Refunds: a bronco item's refunded_amount is the order's succeeded CMS refund total, split by
 -- weight. A legacy item's refunded_amount is the order's matched Stripe refund total, split by
--- weight, when that total is above zero; otherwise, on an order whose own status is 'refunded', each
--- item refunds its OWN realized revenue in full, not a weighted share of the order's `total` -- some
+-- weight, when that total is above zero; otherwise, on an order whose own status is 'refunded' (the
+-- status fallback), each item refunds its OWN realized revenue less its own disputed amount,
+-- greatest(realized_revenue - disputed_amount, 0), not a weighted share of the order's `total` -- some
 -- refunded legacy orders carry a total of 0, or a total below their own line value, so the order
--- total is not a reliable amount to split across items. The matched Stripe refund total is
+-- total is not a reliable amount to split across items. Money a lost chargeback already took back
+-- is not refunded a second time. The matched Stripe refund total is
 -- -sum(amount) over types refund, payment_refund and refund_failure: a failed refund returns the
 -- money, and its positive amount reduces the total.
 --
@@ -23,12 +25,14 @@
 -- zero or positive; a net reversal surplus would be negative and is kept as it is, not clamped. The
 -- dispute fee is a Stripe fee on the order and is already in processing_fee, so it is not counted
 -- again. net_distributable = realized_revenue - refunded_amount - disputed_amount - processing_fee.
--- A chargeback does not vacate a seat: disputed_amount plays no part in is_cancelled.
+-- A chargeback does not vacate a seat: disputed_amount plays no part in is_cancelled. (A legacy item
+-- under the status fallback is cancelled by its status, whatever its dispute; see Seats.)
 --
 -- Seats: a bronco item holds a seat only while its ticket is Active, Paid or Used, or when the item
 -- has no matching ticket row at all -- any other ticket status cancels it, regardless of how much of
--- the order was refunded. A legacy item has no ticket status to check, so it is cancelled only when
--- its own refunded_amount reaches its own realized_revenue.
+-- the order was refunded. A legacy item has no ticket status to check, so it is cancelled when its
+-- own refunded_amount reaches its own realized_revenue, or, under the status fallback, whenever its
+-- realized_revenue is above zero (its refund may be smaller than its revenue by a disputed amount).
 --
 -- Zero-total orders: an order can be paid by gift card, credit or voucher and carry a total of 0
 -- while its line items still carry real value; those items keep their full realized revenue. With no
@@ -65,7 +69,8 @@
 -- out as consecutive seat positions from 0, a transfer takes from a root line exactly the positions the two
 -- ranges share, so a transfer holding seats from two root lines gets the sum, and several transfers taking
 -- seats from one root line each get per-seat x their own seats. Money is conserved per root.
--- A transfer_in line is cancelled when its moved refund reaches its moved realized revenue, or when the
+-- A transfer_in line is cancelled when its moved refund reaches its moved realized revenue, when it takes
+-- seats with realized revenue from a root line under the status fallback, or when the
 -- transfer order's own status is refunded. In the second case, when the root was not refunded, the transfer
 -- line still keeps the money moved from the root: that money was paid and not returned, only the seat is gone.
 -- A root line whose every seat was given up has seats 0 and is not cancelled.
@@ -172,9 +177,10 @@ revenue as (
 ),
 refunded as (
   select *,
-    -- Legacy's status-refund case refunds each item's own realized revenue in full, not a weighted
-    -- share of the order's (unreliable) total; every other case is the usual weighted split.
-    case when refund_by_status then realized_revenue else order_refunded * w end as refunded_amount,
+    -- Legacy's status-refund case refunds each item's own realized revenue less what its dispute already
+    -- took back, not a weighted share of the order's (unreliable) total; every other case is the usual
+    -- weighted split.
+    case when refund_by_status then greatest(realized_revenue - order_disputed * w, 0) else order_refunded * w end as refunded_amount,
     order_disputed * w as disputed_amount
   from revenue
 ),
@@ -222,6 +228,7 @@ held_lines as (
 -- held_before + seats_held).
 pairs as (
   select h.order_item_key, r.realized_revenue, r.refunded_amount, r.disputed_amount, r.processing_fee, r.discount, r.seats as root_line_seats,
+    r.refund_by_status,
     greatest(0, least(r.seats_before + r.seats_given_up, h.held_before + h.seats_held)
       - greatest(r.seats_before, h.held_before)) as seats_taken
   from held_lines h
@@ -233,7 +240,8 @@ moved as (
     sum(coalesce(safe_divide(refunded_amount, root_line_seats), 0) * seats_taken) as refunded_amount,
     sum(coalesce(safe_divide(disputed_amount, root_line_seats), 0) * seats_taken) as disputed_amount,
     sum(coalesce(safe_divide(processing_fee, root_line_seats), 0) * seats_taken) as processing_fee,
-    sum(coalesce(safe_divide(discount, root_line_seats), 0) * seats_taken) as discount
+    sum(coalesce(safe_divide(discount, root_line_seats), 0) * seats_taken) as discount,
+    logical_or(refund_by_status and seats_taken > 0) as from_status_refund
   from pairs
   group by order_item_key
 ),
@@ -278,7 +286,7 @@ kept as (
     -- line that gave up every seat is not cancelled.
     if(f.seats_given_up > 0 and f.seats_given_up >= f.seats, false,
       f.ticket_refunded or (f.source_system = 'woocommerce' and f.realized_revenue > 0
-        and f.refunded_amount >= f.realized_revenue - 0.005)) as is_cancelled
+        and (f.refund_by_status or f.refunded_amount >= f.realized_revenue - 0.005))) as is_cancelled
   from kept_lines f
 ),
 transferred as (
@@ -298,7 +306,8 @@ transferred as (
     if(t.seats_held > 0 and m.order_item_key is not null, rf.fee_source, 'none') as fee_source,
     t.root_order_key as transfer_root_order_key,
     t.seats_held = 0
-      or (coalesce(m.realized_revenue, 0) > 0 and coalesce(m.refunded_amount, 0) >= coalesce(m.realized_revenue, 0) - 0.005)
+      or (coalesce(m.realized_revenue, 0) > 0 and (coalesce(m.from_status_refund, false)
+        or coalesce(m.refunded_amount, 0) >= coalesce(m.realized_revenue, 0) - 0.005))
       or f.order_status = 'refunded' as is_cancelled
   from transfers t
   join fees f using (order_item_key)

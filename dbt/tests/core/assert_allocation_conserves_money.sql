@@ -51,11 +51,13 @@ select i.order_key, 'legacy_refund_stripe', i.refunded, s.refunded
 from items i join stripe s using (order_key)
 where i.source_system = 'woocommerce' and s.refunded > 0 and abs(i.refunded - s.refunded) > 0.01
 union all
--- Legacy, status-only refund (no matched Stripe refund): each item refunds its own realized revenue,
--- so the order's items should refund exactly what they realized.
-select i.order_key, 'legacy_refund_status', i.refunded, i.realized_revenue
+-- Legacy, status-only refund (no matched Stripe refund): each item refunds its own realized revenue less
+-- its own disputed amount (floored at 0), so the order's items should refund what they realized less what
+-- was disputed. Disputed money is split by the same weight as realized revenue, so every item of the order
+-- has the same sign of (realized - disputed) and the order-level floor equals the sum of the item floors.
+select i.order_key, 'legacy_refund_status', i.refunded, greatest(i.realized_revenue - i.disputed, 0)
 from items i
 join woo o using (order_key)
 left join stripe s using (order_key)
 where i.source_system = 'woocommerce' and o.status = 'refunded' and coalesce(s.refunded, 0) <= 0
-  and abs(i.refunded - i.realized_revenue) > 0.01
+  and abs(i.refunded - greatest(i.realized_revenue - i.disputed, 0)) > 0.01
