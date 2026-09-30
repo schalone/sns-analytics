@@ -15,6 +15,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "dbt-bigquery>=1.12,<2"]
+# The Slack brief / Google Ads job (brief/) ships its own image from brief/requirements.txt; this group
+# installs the same packages locally so its tests run from the repo root (pip install -e ".[brief]").
+brief = ["google-ads>=33,<34", "anthropic>=1.8,<2", "matplotlib>=3.9,<4"]
 
 [tool.setuptools.packages.find]
 include = ["loaders*"]
