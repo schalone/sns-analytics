@@ -214,28 +214,48 @@ and the money paid for it follow the transfer:
 
 ## First production build of the economic truth layer
 
-Production has not been built with the economic truth layer. Production `core_sessions` still carries the
-old `pre_launch` column, which the models now replace with `platform_era`; because `core_sessions` is
-incremental (`insert_overwrite`), a plain production build errors on it, and `mart_daily_kpis`, which reads
-it, fails until `core_sessions` is fully refreshed. Every step below that writes to production needs the
-owner's go-ahead first. In order:
+Production has not been built with the economic truth layer. Production `core_sessions` is expected to
+still carry the old `pre_launch` column, which the models now replace with `platform_era` (production was
+last built before the change; this has not been checked against production). If it does, then because
+`core_sessions` is incremental (`insert_overwrite`), a plain production build errors on it, and
+`mart_daily_kpis`, which reads it, fails until `core_sessions` is fully refreshed. Every step below that
+writes to production needs the owner's go-ahead first.
+
+Steps 2 to 5 run under the identity of whoever runs them: the `prod` profile uses `method: oauth`, which on a
+laptop or in Cloud Shell is that person's own Application Default Credentials. The pipeline's service account
+does not exist until step 6 creates it, and it is checked in step 7. In order:
 
 1. **Merge** the branch.
-2. **Verify the prerequisites.** (a) The production service account can read the dataset-scoped
-   `INFORMATION_SCHEMA.COLUMNS` of `staging`, `core`, `mart` and `ops` (`assert_no_pii_columns` and
-   `assert_no_pre_launch_column` read them). (b) `ops.load_state` holds a watermark for all four Stripe
-   entities (`balance_transactions`, `refunds`, `disputes`, `payouts`). (c) No `raw_stripe` payload contains
-   `@` (the query in `dbt/tests/staging/assert_no_email_in_raw_stripe.sql` returns no rows).
-3. **Rebuild `core_sessions` from scratch:** `dbt run --target prod --select core_sessions --full-refresh`
-   (about 10 GiB scanned). `core_session_orders` is unchanged and needs no refresh.
+2. **Verify the prerequisites.** (a) You can read the dataset-scoped `INFORMATION_SCHEMA.COLUMNS` of
+   `staging`, `core`, `mart` and `ops` (`assert_no_pii_columns` and `assert_no_pre_launch_column` read them).
+   (b) `ops.load_state` holds a watermark for all four Stripe entities (`balance_transactions`, `refunds`,
+   `disputes`, `payouts`). (c) No `raw_stripe` payload contains `@` (the query in
+   `dbt/tests/staging/assert_no_email_in_raw_stripe.sql` returns no rows). (d) Whether production
+   `core_sessions` carries `pre_launch`; this read-only query also exercises (a) for `core`:
+
+   ```bash
+   cd dbt && ../.venv/bin/dbt show --target prod --inline "select column_name from core.INFORMATION_SCHEMA.COLUMNS where table_name = 'core_sessions' and column_name in ('pre_launch', 'platform_era')"
+   ```
+
+   A `pre_launch` row means step 3 is needed. If only `platform_era` comes back, skip step 3.
+3. **Rebuild `core_sessions` from scratch:** `dbt run --target prod --select core_sessions --full-refresh`.
+   Expected to scan about 10 GiB: a development full refresh of `core_sessions` processed 10.3 GiB on
+   2026-09-27 (dbt's bytes processed; the bytes billed were not measured), and the GA4 history it reads has
+   grown since. `core_session_orders` is unchanged and needs no refresh.
 4. **Build everything:** `dbt build --target prod`. Expect only the warnings listed under "Expected
    warnings". An error skips the models downstream of it: they keep their previous data, stale but not
    damaged; fix the cause and build again.
 5. **Refresh the Looker Studio data sources' fields** (`pre_launch` became `platform_era`, and the marts
    have new columns). The Slack brief needs no change.
-6. **Deploy the jobs** with `infra/setup.sh` (Cloud Shell), which creates the schedulers paused.
-7. **Unpause the daily scheduler first**, and check one daily run (Slack line and `ops.run_log`).
-8. **Unpause the hourly scheduler last**, after measuring one hourly run's billed bytes (see "Cost").
+6. **Deploy the jobs** with `infra/setup.sh` (Cloud Shell), which creates the service account, its dataset
+   grants and the schedulers, paused.
+7. **Re-check the service account's read access**, before unpausing anything. Execute the daily job once by
+   hand (`docs/handoff.md` item 11): its `dbt build` runs as the service account, and
+   `assert_no_pii_columns` and `assert_no_pre_launch_column` must pass. An Access Denied on
+   `INFORMATION_SCHEMA.COLUMNS` shows as an error on those two tests in the Slack line and in `ops.run_log`
+   (step `dbt.daily`).
+8. **Unpause the daily scheduler first**, and check one daily run (Slack line and `ops.run_log`).
+9. **Unpause the hourly scheduler last**, after measuring one hourly run's billed bytes (see "Cost").
 
 ## Stripe metadata `order_key` in rows already loaded
 
@@ -244,8 +264,9 @@ with the order id it opened the order on the legacy site. Rows loaded before the
 2026-09-29, 24,726 of 115,287 `raw_stripe.balance_transactions` rows carried `source.metadata.order_key`
 (`raw_stripe.refunds`: none). New loads do not add it. The remedy is to delete the four `raw_stripe` tables
 and reload the history with `python -m loaders run --sources stripe --full` (recreate the tables first with
-`python infra/create_raw_tables.py`); it pages the whole account history. Whether to do it is the owner's
-decision.
+`python infra/create_raw_tables.py`); it pages the whole account history. No reload is needed: the owner
+confirmed on 2026-09-30 that the old WordPress site is archived and not live, so a stored `order_key` opens
+nothing. The remedy stays here in case that changes.
 
 ## Rebuilding a model and its children
 
@@ -339,7 +360,11 @@ A green `dbt build` today shows exactly these warnings; any error, or any other 
 Warn-severity tests that pass today but will warn if their condition appears: `assert_core_sessions_fresh`,
 `assert_raw_gsc_fresh`, `assert_search_page_totals_match_property_totals`, the `core_tickets.event_key`
 relationships test, `assert_worked_event_pace` (the worked events' pace and sell-out, which move if the CMS
-dates or sizes an imported event differently), `assert_no_unhandled_platform_transfers` (a new-platform
+dates or sizes an imported event differently), `assert_bronco_order_realized_matches_total` (a bronco
+order whose items do not realize its total plus gift card applied, within one cent),
+`assert_kpi_bookings_have_orders` (a booking whose purchase order, `coalesce(transfer_root_order_key,
+order_key)`, is missing from `core_orders`, so its money would drop out of `mart_daily_kpis`),
+`assert_no_unhandled_platform_transfers` (a new-platform
 ticket transfer, whose money rule is not decided yet), `assert_no_estimated_fee_on_settled_bronco` (a
 card-paid bronco booking older than two days with no Stripe charge), `assert_bronco_bookings_have_event`,
 and the two pinned-fact tests `assert_post_launch_orders_pinned` and
@@ -352,8 +377,9 @@ the warning test is deleted (see `docs/econ-001-validation.md`).
 
 Error-severity tests that pass today only because no new-platform data is loaded:
 `assert_bronco_fee_match_rate` (fails when, in a month with at least 50 card-paid bronco bookings older than
-two days, more than 2% have no Stripe charge) and `assert_bronco_order_realized_matches_total` (a bronco
-order's items must realize its total plus gift card applied, within one cent).
+two days, more than 2% have no Stripe charge) and `assert_bronco_order_realized_match_rate` (fails when, in
+a month with at least 50 bronco orders, more than 2% disagree with total plus gift card applied by more than
+one cent).
 
 ## Cost
 

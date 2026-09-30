@@ -71,14 +71,22 @@ to do; noted because it would otherwise have broken the CMS backfill (item 8) an
 3a. **First production build of the economic truth layer.**
    Who: the repository owner, or someone with the owner's go-ahead for every step that writes to
    production. What: follow `docs/runbook.md`, "First production build of the economic truth layer", in its
-   order: merge; verify the prerequisites (dataset-scoped `INFORMATION_SCHEMA.COLUMNS` readable in
+   order. The steps before item 4 run under the identity of whoever runs them (the `prod` dbt profile uses
+   oauth, that person's own credentials); the pipeline's service account does not exist until item 4 creates
+   it. Merge; verify the prerequisites as yourself (dataset-scoped `INFORMATION_SCHEMA.COLUMNS` readable in
    `staging`, `core`, `mart`, `ops`; Stripe watermarks for all four entities in `ops.load_state`; no `@` in
-   any `raw_stripe` payload); `dbt run --target prod --select core_sessions --full-refresh` (about 10 GiB;
-   production `core_sessions` still has the old `pre_launch` column, and a plain build errors on it);
-   `dbt build --target prod`; refresh the Looker Studio data source fields; then items 4 and 11 (deploy the
-   jobs with the schedulers paused, unpause daily first and check a run, unpause hourly last after measuring
-   one hourly run's billed bytes). Verify: `dbt build --target prod` shows only the runbook's expected
-   warnings. Unblocks: production tables that match this repository.
+   any `raw_stripe` payload; whether production `core_sessions` still has the old `pre_launch` column, which
+   is expected but not checked, with the read-only `dbt show --target prod --inline` query over
+   `core.INFORMATION_SCHEMA.COLUMNS` given in the runbook); if it does, `dbt run --target prod --select
+   core_sessions --full-refresh` (expected about 10 GiB: a development full refresh processed 10.3 GiB on
+   2026-09-27; bytes billed not measured), since a plain build errors on that column; `dbt build --target
+   prod`; refresh the Looker Studio data source fields; then items 4 and 11 (deploy the jobs with the
+   schedulers paused; execute the daily job once by hand and confirm `assert_no_pii_columns` and
+   `assert_no_pre_launch_column` pass, which re-checks the service account's read access to the
+   dataset-scoped `INFORMATION_SCHEMA.COLUMNS`, before unpausing anything; unpause daily first and check a
+   run, unpause hourly last after measuring one hourly run's billed bytes). Verify: `dbt build --target
+   prod` shows only the runbook's expected warnings. Unblocks: production tables that match this
+   repository.
 
 4. **Run `infra/setup.sh` in Cloud Shell.**
    Who: a human with `gcloud`/`bq` access and IAM admin on `sipandscript` (the dev laptop's `gcloud` and

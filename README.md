@@ -96,7 +96,9 @@ applies to 14 legacy bookings. A fully refunded booking keeps a negative net: St
 `refunded_amount` nets out a failed refund (Stripe `refund_failure`), which returns the money.
 `disputed_amount` is the order's net chargeback money in Stripe (reporting category `dispute` less
 `dispute_reversal`), split like a refund; the dispute fee is already in `processing_fee`. A chargeback does
-not cancel the seat. Legacy bookings carry 2,737.00 of net disputed money in all.
+not cancel the seat. Legacy bookings carry 2,737.00 of net disputed money in all. A legacy order with status
+`refunded` and no matched Stripe refund refunds each item's realized revenue less its disputed money (never
+below zero), so a lost chargeback is not deducted a second time as a refund; the item is cancelled.
 
 **Transferred seats.** The legacy site moved a seat to another class by creating a zero-total order, one
 per seat, whose parent is the original paid order; the instructor who teaches the class attended earns
@@ -109,9 +111,16 @@ purchases and are left out of the KPI mart's order and seat counts. Acquisition 
 `mart_daily_kpis` and `mart_paid_performance` report a transferred seat's money on the original order's
 date, channel, metro row and campaign; event, instructor and customer views follow the seat. Zero-total orders with ticket value and no paid
 origin (`unpaid_zero_total`, likely tickets bought with gift cards, unverified) keep their line
-value with no fee and are labelled so they can be excluded. Gift card sale lines are not bookings, so a seat
-paid for with a gift card counts once, at ticket value, in event and share figures; order gross revenue
-counts the card when sold and the redemption order at its total of zero; no model adds the two together.
+value with no fee and are labelled so they can be excluded. A seat paid for with a gift card is an ordinary
+booking: the owner confirmed on 2026-09-30 that it earns the instructor 60% of the class price, and the model
+counts it once, at ticket value, split 60/40, with no Stripe fee. Gift card sale lines are not bookings; order
+gross revenue counts the card when sold and the redemption order at its total of zero; no model adds the two
+together.
+
+**Stripe charges with no order.** Legacy charges that match no order (56,641.67 across the legacy era) are
+private and corporate events invoiced directly through Stripe, as the owner confirmed on 2026-09-30. They are
+real revenue outside the event economics and no model covers them yet; the rule for instructor pay on them is
+future scope.
 
 New tables:
 

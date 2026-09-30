@@ -44,7 +44,7 @@ The shares are dbt variables `sns_share_rate: 0.40` and `instructor_share_rate: 
 
 - A fully refunded booking has `net_distributable = −processing_fee`, because Stripe keeps its fee on refunds. The loss is split 60/40 like any other amount.
 - Dispute fees count as processing fees on the disputed order.
-- A gift card applied to a ticket order is a payment method, not a discount. The booking keeps its full realized revenue. Gift-card **purchase** orders are not bookings and carry no ticket economics, which avoids counting the same money twice.
+- A gift card applied to a ticket order is a payment method, not a discount. The booking keeps its full realized revenue. Gift-card **purchase** orders are not bookings and carry no ticket economics, which avoids counting the same money twice. Confirmed by the owner on 2026-09-30: a seat paid for with a gift card earns the instructor 60% of the class price.
 - A ticket order paid entirely by gift card has no Stripe charge and a processing fee of zero.
 
 ## 3. What the data supports (verified 2026-09-27 against BigQuery)
@@ -199,7 +199,7 @@ Grain: one ticket order item, that is order × event. Gift-card, materials and o
 | list_value | quantity × unit price |
 | discount, service_fee | order-level amounts allocated pro rata by line total across **all** items on the order |
 | realized_revenue | §2 |
-| refunded_amount | bronco: completed refunds from the CMS. legacy: matched Stripe refunds; else the full line when the order status is `refunded`. Allocated pro rata by line total |
+| refunded_amount | bronco: completed refunds from the CMS. legacy: matched Stripe refunds; else, when the order status is `refunded`, the line's own realized revenue less its disputed amount, never below zero, so a lost chargeback is not refunded again (the line is cancelled). Refund totals from the CMS or Stripe are allocated pro rata by line total |
 | processing_fee | sum of Stripe fees on the order's charge, refund and dispute transactions, allocated pro rata by line total |
 | fee_source | `actual` (matched in Stripe) \| `estimated` \| `none` (no card payment) |
 | net_distributable, sns_share, instructor_share | §2 |
@@ -254,7 +254,7 @@ Without this rule the model counts the money twice (on the original event throug
 2. The root's ticket lines give up the held seats, taking them from its lines in order of line key. A root line's seats become the seats bought less the seats given up.
 3. Money follows the seat at the price actually paid: for each seat given up, the root line's realized revenue, refund, processing fee, net distributable and both shares, each divided by the seats that line bought, move to the transfer booking. The transfer order's own line value is not revenue.
 4. The transfer booking takes the root's `fee_source`.
-5. A transfer booking is cancelled when its moved refund reaches its moved realized revenue, or when the transfer order's own status is refunded.
+5. A transfer booking is cancelled when its moved refund reaches its moved realized revenue, when it takes seats from a root line refunded by the order's `refunded` status, or when the transfer order's own status is refunded.
 6. Money is conserved: for every root, the realized revenue, refunds and fees of the root's lines plus those of its transfer bookings equal what the root's lines carried before any transfer.
 7. A transfer order belongs to the root's customer. It is not a purchase: it never counts as an order, a first order or a repeat purchase, and it is excluded from order, ticket-order and seat counts in the KPI mart.
 8. A transfer order with no root, and a zero-total order with ticket value and no parent (332 orders, $32,154), keep their line value as realized revenue with no fee, as before. Their nature is unknown; they are labelled so they can be excluded.

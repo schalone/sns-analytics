@@ -9,6 +9,9 @@ Updated 2026-09-29: the model now deducts net disputed (chargeback) money and ne
 (commit `cdf71a4`). Every figure below that those changes move was re-queried from the `dev_flock_*` build
 after them; the worked orders and worked events carry no dispute and are unchanged.
 
+Updated 2026-09-30: a legacy order refunded by status alone no longer refunds money a lost chargeback already
+took (see "Known limits"). One order changed; the S&S figures for 2023 and in total below were re-queried.
+
 **Where these figures come from.** Every figure below was queried from a build in the `dev_flock_*`
 datasets (`dev_flock_staging`, `dev_flock_core`, `dev_flock_mart`, `dev_flock_ops`), which read the real raw
 and archive datasets. The production `staging`, `core`, `mart` and `ops` datasets have not been rebuilt with
@@ -41,7 +44,7 @@ cannot be checked without payout records, which are not used.
 | 8. Both platforms use the same Stripe account | Supported for legacy: 96,864 legacy charges match an archive order. Bronco not yet testable. |
 | Stated assumption: a fully refunded booking has net = -fee | Model computes it as specified: woo-345525 net -2.19; Stripe kept its 2.19 fee and the refund carried no fee of its own. |
 | Stated assumption: dispute fees count as processing fees | Exercised on real data, not hand-checked. Stripe records a dispute as an `adjustment` with reporting category `dispute` (a withdrawal) or `dispute_reversal` (money returned). On the orders the model counts: 52 withdrawals, -5,265.80, carrying 780.00 of dispute fees, and 20 reversals, +2,528.80, returning 195.00 of fees. The fees are in `processing_fee`; the net withdrawn money, 2,737.00 over 32 orders, is `disputed_amount` and is deducted from net distributable. 14 further disputed orders (995.00 net: 11 failed, 2 cancelled, 1 on-hold) are not orders the model counts. `assert_allocation_conserves_money` checks each order's split against Stripe. |
-| Stated assumptions on gift cards as payment | Not exercised: no legacy order records a gift card applied, and no bronco order is loaded. |
+| Stated assumptions on gift cards as payment | Rule confirmed by the owner on 2026-09-30: a seat paid for with a gift card earns the instructor 60% of the class price, so it is an ordinary booking at ticket value, split 60/40, with no Stripe fee, as the model treats it. Not exercised on data: no legacy order records a gift card applied, and no bronco order is loaded. |
 | Transferred seats (§6.8): the seat and its money follow the transfer | Model computes it as specified: woo-373065 and woo-ev-259204. That a moved seat's money goes to the instructor of the class attended is the owner's statement. |
 
 ## Worked orders
@@ -169,11 +172,11 @@ year). 2026 runs to the end of the legacy era, 2026-06-18.
 | 2020 | 205,708.49 | 455.00 | 76,794.66 | 2,797 | 77 of 422 |
 | 2021 | 616,555.18 | 740.00 | 230,946.78 | 8,976 | 172 of 794 |
 | 2022 | 1,911,280.64 | 460.00 | 722,294.36 | 27,510 | 603 of 2,408 |
-| 2023 | 1,427,664.39 | 204.00 | 538,514.07 | 19,326 | 415 of 2,126 |
+| 2023 | 1,427,664.39 | 204.00 | 538,541.67 | 19,326 | 415 of 2,126 |
 | 2024 | 1,440,467.10 | 553.00 | 547,047.96 | 19,811 | 481 of 1,955 |
 | 2025 | 2,365,095.94 | 260.00 | 896,060.50 | 33,663 | 732 of 2,785 |
 | 2026 | 1,274,908.00 | 0.00 | 485,412.10 | 18,188 | 409 of 1,555 |
-| All | 9,633,384.43 | 2,737.00 | 3,644,129.48 | 136,122 | 2,889 of 12,045 |
+| All | 9,633,384.43 | 2,737.00 | 3,644,157.08 | 136,122 | 2,889 of 12,045 |
 
 Disputed is net chargeback money, already deducted from S&S share (S&S falls by 0.40 of it). "of N" counts dated legacy events that sold at least one seat. No legacy event before 2020 has an event date.
 Realized revenue and S&S share include 32,153.50 of zero-total orders with no parent and 2,140.00 of transfer
@@ -234,20 +237,22 @@ Matched legacy charges: 96,864 charges, 9,836,419.88 charged, 314,616.03 of fees
 
 ## Warnings outstanding
 
-Final build (`dbt build --exclude core_sessions core_session_orders`, `dev_flock_*`, 2026-09-29): PASS 334,
-WARN 5, ERROR 0, of 339. Every warning is one the runbook already expects:
+Final build (`dbt build --exclude core_sessions core_session_orders`, `dev_flock_*`, 2026-09-30): PASS 335,
+WARN 6, ERROR 0, of 341. Five warnings are ones the runbook already expects; the sixth,
+`assert_raw_gsc_fresh`, fires because no Search Console load has run since 2026-09-27 (no job is deployed):
 
 | Test | Rows | Cause |
 |---|---|---|
 | `assert_raw_cms_orders_fresh` | 1 | `raw_cms.orders` is empty; nothing loaded in the last day. |
+| `assert_raw_gsc_fresh` | 1 | `raw_gsc.page_query` last loaded 2026-09-27; nothing loaded in the last two days. |
 | `assert_webapp_orders_present` | 1 | No new-platform orders: the CMS export is not loaded. |
-| `assert_reconciliation_variance_recent` | 29 | Recent bronco days have Stripe charges but no CMS orders to reconcile against (the count follows today's date). |
+| `assert_reconciliation_variance_recent` | 28 | Recent bronco days have Stripe charges but no CMS orders to reconcile against (the count follows today's date). |
 | `assert_stripe_charges_carry_a_join_key` | 1 | 2016: 204 of 242 charges carry no order reference (fixed archive data). |
 | `assert_identity_coverage` | 2 | Legacy 2019 (96.55%) and 2020 (97.58%) resolved identity, below 98%. |
 
 `assert_worked_bronco_order_pinned` passes today and will warn once a bronco booking is more than two days old.
 The legacy totals above were re-queried after the build (realized 9,633,384.43, disputed 2,737.00, S&S
-3,644,129.48, 136,122 seats).
+3,644,157.08, 136,122 seats).
 
 ## Investigations
 
@@ -319,7 +324,10 @@ item value while its line still carries that value, a pattern that fits a gift c
 coupon; before 2023 there is no discount on them at all. The model keeps their line value as realized revenue
 with no fee.
 
-How gift cards are counted today, if these orders are gift-card redemptions (likely, unverified):
+How gift cards are counted. The owner confirmed on 2026-09-30 that a seat paid for with a gift card earns the
+instructor 60% of the class price: it is an ordinary booking, at ticket value, split 60/40, with no Stripe fee,
+which is how the model already treats it. For these orders, if they are gift-card redemptions (likely,
+unverified):
 
 - Gift card **sale** lines are not bookings. Event figures, instructor share and S&S share therefore count a
   seat paid for with a gift card once, at ticket value, when the seat is booked.
@@ -329,9 +337,8 @@ How gift cards are counted today, if these orders are gift-card redemptions (lik
   columns), so no double count exists in any model today. One would arise only if gift card sale revenue
   were added to booking revenue.
 
-Not established: that these 332 orders are gift card redemptions at all (the owner said "likely"); how gift
-cards were redeemed in general (card sales, 41,198.25, exceed the value of these orders, 32,153.50); and
-whether an instructor is paid 60% on a seat paid for with a gift card.
+Not established: that these 332 orders are gift card redemptions at all (the owner said "likely"); and how
+gift cards were redeemed in general (card sales, 41,198.25, exceed the value of these orders, 32,153.50).
 
 ### Stripe charges with no order
 
@@ -348,8 +355,9 @@ whether an instructor is paid 60% on a seat paid for with a gift card.
 All are charges (no `payment` rows), and all carry a customer hash. Of 2026, 5,950 charges (540,007.00) are
 new-platform charges from 2026-06-19 on, which cannot match until the CMS orders are loaded; 10 (3,593.00) are
 legacy. The legacy remainder over ten years is 56,641.67: 2016's 204 charges carry no order reference, and from
-2022 a steady 15-50 charges a year of 250-1,000 each, a size that fits private or group bookings taken outside
-the ticket checkout. What they paid for is not established.
+2022 a steady 15-50 charges a year of 250-1,000 each. The owner confirmed on 2026-09-30 what they are: private
+and corporate events invoiced directly through Stripe. They are real revenue outside the event economics and
+have no model yet; the rule for instructor pay on them is future scope.
 
 ### Undated legacy events
 
@@ -402,14 +410,17 @@ established: the archive has no redemption record and no legacy order records a 
 - The hourly job's cost with the economics models (`core_stripe_transactions` to `core_bookings`) in the hourly build.
 - The dispute figures above against Stripe by hand: they are measured, not hand-checked.
 - Chains of more than five transfers (none exist today).
+- Private and corporate event revenue: no model (see "Stripe charges with no order").
 
 ## Known limits
 
-- **A refunded-status order with a lost dispute is deducted twice.** When a legacy order's status is
-  `refunded` but Stripe holds no refund for it, each item refunds its own realized revenue (the status
-  fallback); if the order also has a lost dispute, the disputed money is deducted again. One order today:
-  woo-238645, 69.00 refunded by status and 69.00 disputed, net distributable -86.30, S&S share -34.52 (27.60
-  lower than a single deduction would give). Not changed: which of the two should give way is not decided.
+- **Fixed 2026-09-30: a refunded-status order with a lost dispute was deducted twice.** When a legacy
+  order's status is `refunded` but Stripe holds no refund for it, each item refunded its own realized revenue
+  (the status fallback), and a lost dispute on the same order deducted the money again. The fallback now
+  refunds `greatest(realized_revenue - disputed_amount, 0)` per item, and the item stays cancelled. The one
+  order affected, woo-238645 (69.00, lost chargeback of 69.00), went from refunded 69.00, net distributable
+  -86.30, S&S share -34.52 to refunded 0.00, net -17.30 (Stripe's fee only), S&S share -6.92. Legacy refunded
+  money fell by 69.00 and net distributable rose by 69.00.
 - **Partially refunded multi-seat legacy bookings still count every seat.** A legacy booking has no ticket
   status, so it gives up its seats only when its refund reaches its whole realized revenue; a partial refund
   of a two-seat line leaves both seats counted.
