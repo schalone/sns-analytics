@@ -1,0 +1,329 @@
+{
+ "austin": {
+  "total": 7,
+  "cities": [
+   "Austin",
+   "Round Rock"
+  ],
+  "query": "Austin, TX",
+  "lat": 30.292341999999998,
+  "lng": -97.7476568,
+  "label": "Austin, TX"
+ },
+ "boston": {
+  "total": 46,
+  "cities": [
+   "Amesbury",
+   "Bedford",
+   "Boston",
+   "Brighton",
+   "Burlington",
+   "Cambridge",
+   "Canton",
+   "Devens"
+  ],
+  "query": "Boston, MA",
+  "lat": 42.3529945,
+  "lng": -71.06339650000001,
+  "label": "Boston, MA"
+ },
+ "san-francisco": {
+  "total": 18,
+  "cities": [
+   "Castro Valley",
+   "Clayton",
+   "Fremont",
+   "Lafayette",
+   "Livermore",
+   "Menlo Park",
+   "Pittsburg",
+   "Pleasanton"
+  ],
+  "query": "San Francisco, CA",
+  "lat": 37.7446275,
+  "lng": -122.4129575,
+  "label": "San Francisco, CA"
+ },
+ "nyc": {
+  "total": 76,
+  "cities": [
+   "Bay Shore",
+   "Brooklyn",
+   "Brooklyn ",
+   "Chappaqua",
+   "Dobbs Ferry",
+   "East Hanover",
+   "Hastings on Hudson",
+   "Hicksville"
+  ],
+  "query": "New York, NY",
+  "lat": 40.756132923076926,
+  "lng": -73.98974492307693,
+  "label": "New York, NY"
+ },
+ "washington-dc": {
+  "total": 60,
+  "cities": [
+   "Annapolis",
+   "Annapolis Junction",
+   "Ashburn",
+   "Baltimore",
+   "Brookeville",
+   "Catonsville",
+   "College Park",
+   "Columbia"
+  ],
+  "query": "Washington, DC",
+  "lat": 38.902062799999996,
+  "lng": -77.006752,
+  "label": "Washington, DC"
+ },
+ "dallas": {
+  "total": 39,
+  "cities": [
+   "Colleyville",
+   "Dallas",
+   "Fort Worth",
+   "Garland",
+   "Grapevine",
+   "Richardson"
+  ],
+  "query": "Dallas, TX",
+  "lat": 32.78434466666667,
+  "lng": -96.80336083333333,
+  "label": "Dallas, TX"
+ },
+ "houston": {
+  "total": 13,
+  "cities": [
+   "Houston",
+   "Richmond"
+  ],
+  "query": "Houston, TX",
+  "lat": 29.8012835,
+  "lng": -95.3895415,
+  "label": "Houston, TX"
+ },
+ "los-angeles": {
+  "total": 17,
+  "cities": [
+   "Anaheim",
+   "Carson",
+   "Cerritos",
+   "Culver City",
+   "Long Beach",
+   "Los Angeles",
+   "Placentia",
+   "Santa Monica"
+  ],
+  "query": "Los Angeles, CA",
+  "lat": 33.992782,
+  "lng": -118.443788,
+  "label": "Los Angeles, CA"
+ },
+ "chicago": {
+  "total": 22,
+  "cities": [
+   "Chicago",
+   "Griffith",
+   "Itasca",
+   "La Grange",
+   "Lemont",
+   "Long Grove",
+   "Mundelein",
+   "Naperville"
+  ],
+  "query": "Chicago, IL",
+  "lat": 41.9370805,
+  "lng": -87.6788375,
+  "label": "Chicago, IL"
+ },
+ "scottsdale": {
+  "total": 13,
+  "cities": [
+   "Chandler",
+   "Gilbert",
+   "Mesa",
+   "Mesa ",
+   "Phoenix",
+   "Queen Creek",
+   "Scottsdale",
+   "Tempe"
+  ],
+  "query": "Scottsdale, AZ",
+  "lat": 33.5336495,
+  "lng": -111.906093,
+  "label": "Scottsdale, AZ"
+ },
+ "nashville": {
+  "total": 21,
+  "cities": [
+   "Columbia",
+   "Franklin",
+   "Murfreesboro",
+   "Nashville",
+   "Nolensville"
+  ],
+  "query": "Nashville, TN",
+  "lat": 36.137482,
+  "lng": -86.80350200000001,
+  "label": "Nashville, TN"
+ },
+ "detroit": {
+  "total": 9,
+  "cities": [
+   "Ann Arbor",
+   "Canton",
+   "Ferndale",
+   "Northville"
+  ],
+  "query": "Detroit, MI",
+  "lat": 42.33143,
+  "lng": -83.04575,
+  "label": "Detroit, MI"
+ },
+ "tampa": {
+  "total": 26,
+  "cities": [
+   "Clearwater",
+   "Dunedin",
+   "Land O\u2019 Lakes",
+   "Lithia",
+   "Lutz",
+   "New Port Richey",
+   "Palm Harbor",
+   "Plant City"
+  ],
+  "query": "Tampa, FL",
+  "lat": 28.011321000000002,
+  "lng": -82.46233000000001,
+  "label": "Tampa, FL"
+ },
+ "seattle": {
+  "total": 28,
+  "cities": [
+   "Bellevue",
+   "Bellevue ",
+   "Edmonds",
+   "Everett",
+   "Seattle",
+   "Woodinville"
+  ],
+  "query": "Seattle, WA",
+  "lat": 47.612510500000006,
+  "lng": -122.36108316666667,
+  "label": "Seattle, WA"
+ },
+ "raleigh-durham": {
+  "total": 31,
+  "cities": [
+   "Apex",
+   "Carrboro",
+   "Dunn",
+   "Durham",
+   "Holly Springs",
+   "Pittsboro",
+   "Raleigh",
+   "Raleigh,"
+  ],
+  "query": "Raleigh, NC",
+  "lat": 35.81372816666667,
+  "lng": -78.62925933333332,
+  "label": "Raleigh, NC"
+ },
+ "nh-maine": {
+  "total": 20,
+  "cities": [
+   "Amesbury",
+   "Bedford",
+   "Chichester",
+   "Dover",
+   "Epping",
+   "Hampton",
+   "Kittery",
+   "Lyman"
+  ],
+  "query": "Portsmouth, NH",
+  "lat": 43.07704,
+  "lng": -70.75766,
+  "label": "Portsmouth, NH"
+ },
+ "connecticut": {
+  "total": 10,
+  "cities": [
+   "Berlin",
+   "Ludlow",
+   "Manchester",
+   "Middlefield",
+   "Simsbury",
+   "South Glastonbury",
+   "Sturbridge",
+   "Suffield"
+  ],
+  "query": "Hartford, CT",
+  "lat": 41.76371,
+  "lng": -72.68509,
+  "label": "Hartford, CT"
+ },
+ "san-antonio": {
+  "total": 18,
+  "cities": [
+   "San Antonio"
+  ],
+  "query": "San Antonio, TX",
+  "lat": 29.52578485714286,
+  "lng": -98.48723399999997,
+  "label": "San Antonio, TX"
+ },
+ "rhode-island": {
+  "total": 37,
+  "cities": [
+   "Boston",
+   "Brighton",
+   "Bristol",
+   "Canton",
+   "Holliston",
+   "Marlborough",
+   "Marshfield",
+   "Pawtucket"
+  ],
+  "query": "Providence, RI",
+  "lat": 41.84354,
+  "lng": -71.402129,
+  "label": "Providence, RI"
+ },
+ "atlanta": {
+  "total": 31,
+  "cities": [
+   "Alpharetta",
+   "Atlanta",
+   "Avondale Estates",
+   "Canton",
+   "Cumming",
+   "Duluth",
+   "Dunwoody",
+   "Johns Creek"
+  ],
+  "query": "Atlanta, GA",
+  "lat": 33.7670965,
+  "lng": -84.38302775,
+  "label": "Atlanta, GA"
+ },
+ "philadelphia": {
+  "total": 46,
+  "cities": [
+   "Ardmore",
+   "Chester Springs",
+   "Collingswood",
+   "Conshohocken",
+   "Elmer",
+   "Exton",
+   "King of Prussia",
+   "Lahaska"
+  ],
+  "query": "Philadelphia, PA",
+  "lat": 39.95877933333333,
+  "lng": -75.15713983333332,
+  "label": "Philadelphia, PA"
+ }
+}
