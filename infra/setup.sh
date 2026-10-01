@@ -53,9 +53,11 @@ for s in $SECRETS; do
 done
 
 echo "## Google Ads transfer"
-transfer_configs=$(bq ls --transfer_config --transfer_location=$LOCATION --format=prettyjson 2>/dev/null || true)
+# bq spells the transfer location in lower case: `ls` takes --transfer_location, `mk` the global --location.
+TRANSFER_LOCATION=$(printf '%s' "$LOCATION" | tr '[:upper:]' '[:lower:]')
+transfer_configs=$(bq ls --transfer_config --transfer_location=$TRANSFER_LOCATION --format=prettyjson 2>/dev/null || true)
 if ! grep -q '"displayName": "sns-google-ads"' <<<"$transfer_configs"; then
-  bq mk --transfer_config --transfer_location=$LOCATION --project_id=$PROJECT --data_source=google_ads \
+  bq mk --transfer_config --location=$TRANSFER_LOCATION --project_id=$PROJECT --data_source=google_ads \
      --display_name=sns-google-ads --target_dataset=google_ads --params="{\"customer_id\":\"$ADS_CUSTOMER\",\"include_pmax\":true}"
   echo "   -> authorise the transfer in the console (BigQuery > Data transfers > sns-google-ads) with a user who can read Ads customer $ADS_CUSTOMER, then schedule a backfill of 90 days."
 fi
