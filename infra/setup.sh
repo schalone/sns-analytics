@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Idempotent GCP setup for the sns-analytics pipeline. Run in Cloud Shell: bash infra/setup.sh
+# Idempotent GCP setup for the sns-analytics pipeline.
+# Run from the repo root with a working gcloud and PY set to a Python that has google-cloud-bigquery:
+#   CLOUDSDK_ACTIVE_CONFIG_NAME=sns PY=.venv/bin/python bash infra/setup.sh
+# (or in Cloud Shell: bash infra/setup.sh). It sets the ACTIVE gcloud configuration's project to sipandscript.
 set -euo pipefail
 PROJECT=sipandscript; REGION=us-east1; LOCATION=US
 SA=sns-analytics@${PROJECT}.iam.gserviceaccount.com
@@ -19,17 +22,20 @@ done
 echo "## service account + IAM"
 gcloud iam service-accounts describe $SA >/dev/null 2>&1 || gcloud iam service-accounts create sns-analytics --display-name "sns-analytics pipeline"
 gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:$SA --role roles/bigquery.jobUser --quiet >/dev/null
+# Dataset grants go through the BigQuery API (infra/bq_admin.py): `bq add-iam-policy-binding` does not
+# support datasets ("This feature requires allowlisting"). PY is the interpreter with google-cloud-bigquery.
+PY=${PY:-$(command -v python3)}
 for d in raw_cms raw_stripe raw_gsc raw_spend ops staging core mart; do
-  bq add-iam-policy-binding --member serviceAccount:$SA --role roles/bigquery.dataEditor "$PROJECT:$d" >/dev/null
+  $PY infra/bq_admin.py grant "$d" roles/bigquery.dataEditor "$SA" >/dev/null
 done
 for d in analytics_313669961 sipandscript_new_ds google_ads; do
-  bq add-iam-policy-binding --member serviceAccount:$SA --role roles/bigquery.dataViewer "$PROJECT:$d" >/dev/null
+  $PY infra/bq_admin.py grant "$d" roles/bigquery.dataViewer "$SA" >/dev/null
 done
 
 echo "## ads-builder access"
 gcloud projects add-iam-policy-binding $PROJECT --member serviceAccount:ads-builder@sipandscript.iam.gserviceaccount.com --role roles/bigquery.jobUser --quiet >/dev/null
 for d in mart core; do
-  bq add-iam-policy-binding --member serviceAccount:ads-builder@sipandscript.iam.gserviceaccount.com --role roles/bigquery.dataViewer "$PROJECT:$d" >/dev/null
+  $PY infra/bq_admin.py grant "$d" roles/bigquery.dataViewer ads-builder@sipandscript.iam.gserviceaccount.com >/dev/null
 done
 
 echo "## bucket"
