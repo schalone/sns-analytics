@@ -26,6 +26,9 @@ unit_tests:
         rows:
           - {booking_key: b1, order_key: o1, transfer_root_order_key: null, sns_share: 27.128}
           - {booking_key: b2, order_key: o2, transfer_root_order_key: o1, sns_share: 27.128}
+      # With google_ads_enabled true the model also reads the Ads click table; no Google clicks in this case.
+      - input: source('google_ads', 'click_stats')
+        rows: []
       - input: ref('core_ad_spend')
         rows:
           - {date: 2024-03-01, platform: meta, campaign_id: null, campaign_name: "Spring", campaign_name_norm: "spring", metro_key: null, spend: 10.0, impressions: 1000, clicks: 20}
