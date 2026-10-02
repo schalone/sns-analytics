@@ -9,6 +9,14 @@ class Dedupe(unittest.TestCase):
         rows = [(("y",), "t1", 1, 65.0), (("y",), "t1", 1, 65.0)]
         self.assertEqual(g.dedupe(rows), {("y",): (1, 65.0)})
 
+class NoiseLanding(unittest.TestCase):
+    def test_blank_not_set_and_confirmation_are_noise(self):
+        for pg in ("", "(not set)", " ", "/order-confirmation", "/order-confirmation?orderGuid=abc"):
+            self.assertTrue(g.is_noise_landing(pg), pg)
+    def test_real_pages_are_kept(self):
+        for pg in ("/", "/events", "/metros/boston/", "/events/order-confirmation-party"):
+            self.assertFalse(g.is_noise_landing(pg), pg)
+
 class Text(unittest.TestCase):
     cur = {"sessions": 1000, "users": 800, "purchases": 20, "revenue": 1300.0}
     prev = {"sessions": 1200, "users": 900, "purchases": 30, "revenue": 1950.0}

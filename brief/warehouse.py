@@ -149,7 +149,10 @@ def landing(bq, start, end, limit=10):
     *order*, so a session that produced more than one order joins to more than one row here, and `count(*)`
     would count that single session once per order it produced (fan-out). `count(distinct s.session_key)`
     counts the session once regardless of how many orders it joins to; `count(distinct ... order_key ...)`
-    counts each ticket order once regardless of which of a session's joined rows it appears on."""
+    counts each ticket order once regardless of which of a session's joined rows it appears on.
+
+    Blank / "(not set)" landing pages and /order-confirmation landings are excluded as tracking noise (the same
+    rule as `ga_report.is_noise_landing`)."""
     rows = _rows(bq, f"""
       select s.landing_page_path as page, count(distinct s.session_key) as sessions,
         count(distinct case when o.order_type = 'ticket' then so.order_key end) as purchases
@@ -157,6 +160,9 @@ def landing(bq, start, end, limit=10):
       left join `{PROJECT}.core.core_session_orders` so using (session_key)
       left join `{PROJECT}.core.core_orders` o using (order_key)
       where s.session_date between @start_date and @end_date
+        -- known tracking noise, same rule as ga_report.is_noise_landing
+        and coalesce(trim(s.landing_page_path), '') not in ('', '(not set)')
+        and not starts_with(s.landing_page_path, '/order-confirmation')
       group by 1
       order by sessions desc
       limit @limit_n

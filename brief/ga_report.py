@@ -7,9 +7,19 @@ PROPERTY = "properties/313669961"
 CHANNELS = ["Organic Search", "Paid Search", "Paid Social", "Organic Social", "Direct", "Email", "Referral"]
 DROP_FLAG = 0.25          # flag a headline metric down more than 25%
 PHANTOM_SOURCE = "accounts.google.com"
+# Landing "pages" that are known tracking noise, not places visitors arrive (investigated 2026-10-02): blank /
+# "(not set)" are timeout sessions with no page_view and no orders; /order-confirmation landings are buyers
+# reopening their ticket page (plus a few in-app-browser Stripe returns that the CMS ga_cid passthrough now repairs).
+NOISE_LANDING = ("", "(not set)")
+NOISE_LANDING_PREFIX = "/order-confirmation"
 
 
 # ------------------------------------------------------------ pure ---
+def is_noise_landing(page):
+    page = (page or "").strip()
+    return page in NOISE_LANDING or page.startswith(NOISE_LANDING_PREFIX)
+
+
 def dedupe(rows):
     """rows: [(key_tuple, transaction_id, events, revenue)] -> {key_tuple: (purchases, revenue)} counting each
     transaction id once per key and dividing its revenue by how many times it fired."""
@@ -133,8 +143,9 @@ def fetch(ga, today):
         if c in ch: ch[c][1] = p; ch[c][2] = rev
     # top landing pages yesterday
     lp = {}
-    for r in ga.run({"dateRanges": ydr, "dimensions": [{"name": "landingPage"}], "metrics": [{"name": "sessions"}], "dimensionFilter": not_phantom, "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}], "limit": 8}):
-        lp[r["dimensionValues"][0]["value"]] = [int(r["metricValues"][0]["value"]), 0]
+    for r in ga.run({"dateRanges": ydr, "dimensions": [{"name": "landingPage"}], "metrics": [{"name": "sessions"}], "dimensionFilter": not_phantom, "orderBys": [{"metric": {"metricName": "sessions"}, "desc": True}], "limit": 12}):
+        pg = r["dimensionValues"][0]["value"]
+        if not is_noise_landing(pg) and len(lp) < 8: lp[pg] = [int(r["metricValues"][0]["value"]), 0]
     rows = [((r["dimensionValues"][0]["value"],), r["dimensionValues"][1]["value"], int(r["metricValues"][0]["value"]), 0.0)
             for r in ga.run({"dateRanges": ydr, "dimensions": [{"name": "landingPage"}, {"name": "transactionId"}], "metrics": [{"name": "ecommercePurchases"}], "limit": 100000})]
     for (pg,), (p, _) in dedupe(rows).items():

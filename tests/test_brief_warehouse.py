@@ -207,6 +207,13 @@ def test_landing_uses_distinct_counts_not_row_counts_to_avoid_join_fanout():
     assert "count(*)" not in sql
 
 
+def test_landing_excludes_noise_pages():
+    bq = FakeBqClient()
+    w.landing(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
+    sql, _ = bq.queries[0]
+    assert "'(not set)'" in sql and "'/order-confirmation'" in sql
+
+
 def test_landing_default_limit_is_10():
     bq = FakeBqClient()
     w.landing(bq, dt.date(2026, 9, 24), dt.date(2026, 9, 24))
