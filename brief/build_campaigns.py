@@ -22,7 +22,7 @@ REST_OF_US = json.load(open(HERE / "rest_of_us.json"))   # clusters with classes
 
 # ---------------------------------------------------------------- design ---
 DAILY = {  # USD per day, matching the live account: $100 total ≈ $3,040 / 30.4
-    "near_me_shared": 40.0,  # 45 -> 40 on 2026-09-30: 2 purchases from 126 clicks in 5 days
+    "near_me_shared": 10.0,  # 45 -> 40 on 2026-09-30; 10 on 2026-10-02 when all metros but Atlanta + Bay Area were paused (4 purchases / 288 Near Me clicks)
     "city_named": 30.0,  # 15 -> 30 on 2026-09-30: 4 purchases from 43 clicks, best non-brand
     "brand": 20.0,  # 5 -> 10 on 2026-09-27, 10 -> 20 on 2026-09-30: still lost 31% impression share to budget
     "rest_of_us": 10.0,  # 10 -> 50 on 2026-09-25, 30 on 2026-09-27 (metro-overlap trim), 10 on 2026-09-30: $189, 0 purchases
