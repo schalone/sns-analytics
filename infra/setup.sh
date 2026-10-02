@@ -53,13 +53,20 @@ for s in $SECRETS; do
 done
 
 echo "## Google Ads transfer"
-# bq spells the transfer location in lower case: `ls` takes --transfer_location, `mk` the global --location.
+# Creating the Google Ads transfer needs a user to sign in to Google Ads in a browser (bq mk prints an OAuth
+# URL and waits for a code), so this script only reports. Create it once, interactively, with a user who can
+# read Ads customer $ADS_CUSTOMER, either in the console (BigQuery > Data transfers > Create transfer >
+# Google Ads, display name sns-google-ads, destination dataset google_ads, customer id $ADS_CUSTOMER,
+# include PMax) or from a terminal:
+#   bq mk --transfer_config --location=us --project_id=$PROJECT --data_source=google_ads \
+#      --display_name=sns-google-ads --target_dataset=google_ads --params='{"customer_id":"$ADS_CUSTOMER","include_pmax":true}'
+# then schedule a 90-day backfill and set the dbt var google_ads_enabled to true.
 TRANSFER_LOCATION=$(printf '%s' "$LOCATION" | tr '[:upper:]' '[:lower:]')
 transfer_configs=$(bq ls --transfer_config --transfer_location=$TRANSFER_LOCATION --format=prettyjson 2>/dev/null || true)
-if ! grep -q '"displayName": "sns-google-ads"' <<<"$transfer_configs"; then
-  bq mk --transfer_config --location=$TRANSFER_LOCATION --project_id=$PROJECT --data_source=google_ads \
-     --display_name=sns-google-ads --target_dataset=google_ads --params="{\"customer_id\":\"$ADS_CUSTOMER\",\"include_pmax\":true}"
-  echo "   -> authorise the transfer in the console (BigQuery > Data transfers > sns-google-ads) with a user who can read Ads customer $ADS_CUSTOMER, then schedule a backfill of 90 days."
+if grep -q '"displayName": "sns-google-ads"' <<<"$transfer_configs"; then
+  echo "   sns-google-ads transfer exists"
+else
+  echo "   -> sns-google-ads transfer NOT created: create it interactively (see the comment above this line in infra/setup.sh)"
 fi
 
 echo "## Cloud Run jobs (one per mode; MODE fixed in the job, no overrides, no retries)"
