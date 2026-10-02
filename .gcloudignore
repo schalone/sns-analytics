@@ -1,11 +1,13 @@
 # Files excluded from `gcloud run jobs deploy --source .` uploads (the image needs only loaders/, dbt/, jobs/,
-# pyproject.toml, README.md and the Dockerfile).
+# pyproject.toml, README.md and the Dockerfile). Patterns are anchored with a leading slash where a bare name
+# would also match a nested directory: `tests` alone excluded dbt/tests, dropping every singular dbt test
+# from the image (found on the first job run, 2026-10-02).
 .git
 .gitignore
 .venv
 .superpowers
 docs
-tests
+/tests
 dbt/target
 dbt/dbt_packages
 dbt/logs
