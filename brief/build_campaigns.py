@@ -22,14 +22,15 @@ REST_OF_US = json.load(open(HERE / "rest_of_us.json"))   # clusters with classes
 
 # ---------------------------------------------------------------- design ---
 DAILY = {  # USD per day, matching the live account: $100 total ≈ $3,040 / 30.4
-    "near_me_shared": 45.0,
-    "city_named": 15.0,
-    "brand": 10.0,  # raised from 5 on 2026-09-27: lost 17% impression share to budget
-    "rest_of_us": 30.0,  # 10 -> 50 on 2026-09-25, cut to 30 on 2026-09-27 with the metro-overlap trim
+    "near_me_shared": 40.0,  # 45 -> 40 on 2026-09-30: 2 purchases from 126 clicks in 5 days
+    "city_named": 30.0,  # 15 -> 30 on 2026-09-30: 4 purchases from 43 clicks, best non-brand
+    "brand": 20.0,  # 5 -> 10 on 2026-09-27, 10 -> 20 on 2026-09-30: still lost 31% impression share to budget
+    "rest_of_us": 10.0,  # 10 -> 50 on 2026-09-25, 30 on 2026-09-27 (metro-overlap trim), 10 on 2026-09-30: $189, 0 purchases
 }
 MONTHLY_BUDGET = 3050.0
 REST_OF_US_RADIUS = {"lehigh-valley": 30}   # default RADIUS_MILES; Lehigh trimmed to limit Philadelphia overlap
 MAX_CPC = 2.00
+MAX_CPC_BY_CAMPAIGN = {"SNS | Search | City Named | National": 3.00}  # raised 2026-09-30: 22% impression share lost to rank
 RADIUS_MILES = 40
 MIN_CLASSES_FOR_NEAR_ME = 13   # Houston 13 / Scottsdale 13 in, CT 10 / Detroit 9 / Austin 7 out
 NEAR_ME_HOLD = {"houston", "scottsdale", "connecticut", "detroit", "austin"}  # per approved design
@@ -347,7 +348,7 @@ class Builder:
         c.status = self.client.enums.CampaignStatusEnum.PAUSED
         c.advertising_channel_type = self.client.enums.AdvertisingChannelTypeEnum.SEARCH
         if portfolio_rn: c.bidding_strategy = portfolio_rn                  # shared budget → portfolio Maximize clicks
-        else: c.target_spend.cpc_bid_ceiling_micros = int(MAX_CPC * 1e6)   # own budget → campaign-level Maximize clicks
+        else: c.target_spend.cpc_bid_ceiling_micros = int(MAX_CPC_BY_CAMPAIGN.get(spec["name"], MAX_CPC) * 1e6)   # own budget → campaign-level Maximize clicks
         ns = c.network_settings
         ns.target_google_search = True; ns.target_search_network = False
         ns.target_content_network = False; ns.target_partner_search_network = False
