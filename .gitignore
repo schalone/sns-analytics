@@ -8,3 +8,6 @@ dbt/.user.yml
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+
+# analysis scratch and SDD ledgers (local only)
+.superpowers/
