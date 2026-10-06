@@ -160,6 +160,16 @@ models:
       - name: key
         data_tests: [unique, not_null]
 
+  - name: stg_meta_ads__campaign_daily
+    description: Meta spend per campaign per day, Sip & Script ad account only (Fivetran basic_campaign).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date, campaign_id]
+    columns:
+      - name: spend
+        data_tests: [not_null]
+
   - name: stg_spend__csv
     columns:
       - name: key

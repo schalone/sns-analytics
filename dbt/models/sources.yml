@@ -56,6 +56,10 @@ sources:
         identifier: "ads_Campaign_{{ var('ads_customer_id') }}"
       - name: click_stats
         identifier: "ads_ClickStats_{{ var('ads_customer_id') }}"
+  - name: facebook_ads
+    description: Fivetran Facebook Ads connector. basic_campaign is one row per campaign per day.
+    tables:
+      - name: basic_campaign
   - name: public_geo
     database: bigquery-public-data
     schema: geo_us_boundaries

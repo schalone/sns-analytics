@@ -75,4 +75,8 @@ select sp.date, sp.platform, sp.campaign_id, sp.campaign_name, sp.campaign_name_
   {{ platform_era_of_date('sp.date') }} as platform_era
 from {{ ref('core_ad_spend') }} sp
 left join google_agg g on sp.platform = 'google' and g.date = sp.date and g.campaign_id = sp.campaign_id
-left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform and so.campaign_name_norm = sp.campaign_name_norm
+-- Meta ads tag sessions with utm_campaign = the Meta campaign ID (99% of Paid Social sessions since
+-- 2026-09-01 carry an ID that matches a Sip & Script campaign), so Meta spend rows from the connector
+-- join on campaign_id; CSV and Pinterest rows (no campaign_id) still join on the normalised name.
+left join social_agg so on sp.platform in ('meta', 'pinterest') and so.date = sp.date and so.platform = sp.platform
+  and so.campaign_name_norm = coalesce(sp.campaign_id, sp.campaign_name_norm)

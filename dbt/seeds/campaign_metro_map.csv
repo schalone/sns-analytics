@@ -1,6 +1,6 @@
 campaign_name_pattern,metro_slug
 SNS | Search | Near Me | Boston,boston
-SNS | Search | Near Me | Bay Area,bay-area
+SNS | Search | Near Me | Bay Area,san-francisco
 SNS | Search | Near Me | NYC,nyc
 SNS | Search | Near Me | Washington DC,washington-dc
 SNS | Search | Near Me | Dallas,dallas
@@ -15,3 +15,21 @@ SNS | Search | Near Me | San Antonio,san-antonio
 SNS | Search | Near Me | Rhode Island,rhode-island
 SNS | Search | Near Me | Atlanta,atlanta
 SNS | Search | Near Me | Philadelphia,philadelphia
+ATL,atlanta
+DC,washington-dc
+Dallas,dallas
+DFW,dallas
+Bay Area,san-francisco
+NY,nyc
+Seattle,seattle
+Tampa,tampa
+Austin,austin
+Los Angeles,los-angeles
+Chicago,chicago
+Chicao,chicago
+Houston,houston
+Detroit,detroit
+RI,rhode-island
+Philly,philadelphia
+Maine,nh-maine
+NH,nh-maine

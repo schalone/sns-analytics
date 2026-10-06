@@ -60,12 +60,24 @@ csv as (
     lower(trim(campaign_name)) as campaign_name_norm,
     sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks
   from {{ ref('stg_spend__csv') }}
+  -- with the Meta connector on, Meta comes from it alone, so a stray CSV drop cannot double count
+  {% if var('meta_ads_enabled') %}where platform != 'meta'{% endif %}
   group by date, platform, lower(trim(campaign_name))
+),
+-- Meta from the Fivetran connector: already one row per campaign-day and, checked 2026-10-05, no two
+-- campaigns share a normalised name on the same day, so the (date, platform, campaign_name_norm) grain
+-- holds. campaign_id is kept because GA4's utm_campaign for Meta ads carries the campaign id.
+meta as (
+  select date, 'meta' as platform, campaign_id, trim(campaign_name) as campaign_name,
+    lower(trim(campaign_name)) as campaign_name_norm, spend, impressions, clicks
+  from {{ ref('stg_meta_ads__campaign_daily') }}
 ),
 unioned as (
   select * from google
   union all
   select * from csv
+  union all
+  select * from meta
 )
 -- Fix round 1, finding 3: `campaign_name like concat(pattern, '%')` can match more than one
 -- pattern when one is a prefix of another (e.g. a metro pattern and a broader catch-all pattern
