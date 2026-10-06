@@ -328,6 +328,17 @@ change must be re-applied to history (it was done once on 2026-09-27 for the att
   tickets/refunds/order items keyed to them) get `platform_era` from `source_system` instead
   (`woocommerce` -> `legacy_event_tickets`, else `bronco`), not from `launch_date` directly.
 - **`ads_customer_id`** (`1863952460`): builds the `google_ads` table identifiers.
+- **`meta_ads_enabled`** (`true` since 2026-10-05) and **`meta_ad_account_id`** (`1559657690844663`,
+  "Sip&Script1"): Meta spend comes from the Fivetran Facebook Ads connector (dataset `facebook_ads`,
+  table `basic_campaign`, daily sync, set up by Stephen 2026-10-04). The connector can see other
+  businesses' ad accounts, so `stg_meta_ads__campaign_daily` reads only `meta_ad_account_id`. While true,
+  `core_ad_spend` ignores Meta rows from the CSV drop, so a stray CSV cannot double count; set it false to
+  fall back to the CSV drop. `assert_meta_spend_matches_source` checks Meta spend per day against the
+  connector within one cent. Meta ads tag sessions with `utm_campaign` = the Meta **campaign ID**, so
+  `mart_paid_performance` joins Meta spend to sessions on `campaign_id` (CSV and Pinterest rows still
+  join on the normalised name). Meta campaign names map to metros through the city prefixes in
+  `seeds/campaign_metro_map.csv`; state- and region-level campaigns (MA, AZ, NC, TN, Ohio, Northeast,
+  national) stay unmapped and are allocated as unmapped spend.
 - **`as_of_date`** (default null = today in New York) and **`peer_excluded_statuses`** (default `trash`,
   `pending`, `private`, `draft`, `auto-draft`, `cancelled`, `canceled`): `mart_event_performance` takes as
   peers only events dated before `as_of_date` whose status is not in the list (case-insensitive; a NULL
