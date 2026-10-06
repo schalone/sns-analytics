@@ -337,8 +337,10 @@ change must be re-applied to history (it was done once on 2026-09-27 for the att
   connector within one cent. Meta ads tag sessions with `utm_campaign` = the Meta **campaign ID**, so
   `mart_paid_performance` joins Meta spend to sessions on `campaign_id` (CSV and Pinterest rows still
   join on the normalised name). Meta campaign names map to metros through the city prefixes in
-  `seeds/campaign_metro_map.csv`; state- and region-level campaigns (MA, AZ, NC, TN, Ohio, Northeast,
-  national) stay unmapped and are allocated as unmapped spend.
+  `seeds/campaign_metro_map.csv`, including the state-level ones Stephen mapped on 2026-10-05 (MA and
+  Massachusetts → boston, AZ → scottsdale, NC → raleigh-durham, TN → nashville). Campaigns with no metro
+  (Ohio, Ft. Lauderdale, Denver, SLC, Northeast, retargeting, national) stay unmapped and are allocated as
+  unmapped spend.
 - **`as_of_date`** (default null = today in New York) and **`peer_excluded_statuses`** (default `trash`,
   `pending`, `private`, `draft`, `auto-draft`, `cancelled`, `canceled`): `mart_event_performance` takes as
   peers only events dated before `as_of_date` whose status is not in the list (case-insensitive; a NULL
