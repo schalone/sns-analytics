@@ -375,6 +375,40 @@ unit_tests:
         - {order_item_key: X1, event_key: E1, list_value: 0, realized_revenue: 0, processing_fee: 0, net_distributable: 0, sns_share: 0, is_cancelled: true}
         - {order_item_key: X2, event_key: E2, list_value: 65, realized_revenue: 65, processing_fee: 2, net_distributable: 63, sns_share: 25.2, is_cancelled: false}
 
+  - name: order_item_economics_bronco_discount_capped_at_line_value
+    description: >
+      A fixed-amount promo code larger than the order (140 off a 75 seat) is stored at face value with a total
+      of 0. The site caps the discount at the subtotal, so the item's discount is 75 and its realized revenue
+      0, not -65; a Paid order with no charge has no fee.
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: P, source: webapp, status: Paid, created_at: "2026-07-10 18:37:00", paid_at: "2026-07-10 18:38:00", subtotal: 75, discount: 140, service_fee: 0, total: 0}
+      - input: ref('stg_cms__order_items')
+        rows:
+          - {order_item_key: P1, order_key: P, item_type: ticket, ticket_key: TP1, event_key: E1, quantity: 1, line_total: 75, status: Paid}
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: TP1, status: Paid}
+      - input: ref('core_stripe_transactions')
+        rows: []
+      - input: ref('stg_woo__orders')
+        rows: []
+      - input: ref('stg_woo__order_line_items')
+        rows: []
+      - input: ref('stg_woo__products')
+        rows: []
+      - input: ref('core_events')
+        rows: []
+      - input: ref('core_seat_transfers')
+        rows: []
+    expect:
+      rows:
+        - {order_item_key: P1, list_value: 75, discount: 75, realized_revenue: 0, processing_fee: 0, net_distributable: 0, sns_share: 0, instructor_share: 0, is_cancelled: false}
+
   - name: order_item_economics_zero_value_order
     description: A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
     model: core_order_item_economics

@@ -166,12 +166,21 @@ items as (
     order_status, zero_total_legacy
   from legacy
 ),
+capped as (
+  -- A fixed-amount promo code is stored on the order at its face value even when it exceeds the order (e.g.
+  -- SNS-26-015197: $140 off a $75 seat, total $0). The site floors the total at zero and caps the discount it
+  -- allocates to items at the subtotal (Helpers/OrderItemDiscountAllocation.cs in the CMS repo), so the same
+  -- cap applies here: an order's discount is never more than its line value, and realized revenue never
+  -- goes negative.
+  select * except (order_list_value) replace (least(order_discount, greatest(order_list_value, 0)) as order_discount)
+  from (select *, sum(list_value) over (partition by order_key) as order_list_value from items)
+),
 weighted as (
   select *,
     case when sum(weight_base) over (partition by order_key) > 0
          then weight_base / sum(weight_base) over (partition by order_key)
          else 1 / count(*) over (partition by order_key) end as w
-  from items
+  from capped
 ),
 revenue as (
   select *,

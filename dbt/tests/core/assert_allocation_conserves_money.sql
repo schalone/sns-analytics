@@ -7,8 +7,10 @@
 -- A matched Stripe refund total nets refund_failure rows (a failed refund returns the money). Disputed money
 -- (Stripe reporting_category 'dispute' less 'dispute_reversal') is split across the items of every order, in
 -- both eras, and must add back to the order's net disputed total.
+-- A bronco discount is expected up to the order's line value: the site caps a promo larger than the order at
+-- its subtotal (see core_order_item_economics' capped CTE), so the stored face value is not all applied.
 with items as (
-  select coalesce(transfer_root_order_key, order_key) as order_key, source_system, sum(discount) as discount,
+  select coalesce(transfer_root_order_key, order_key) as order_key, source_system, sum(discount) as discount, sum(list_value) as list_value,
     sum(service_fee) as service_fee, sum(refunded_amount) as refunded, sum(disputed_amount) as disputed, sum(processing_fee) as fee,
     sum(realized_revenue) as realized_revenue,
     -- every line of one order shares its fee_source; a superseded transfer line carries 'none'
@@ -30,8 +32,9 @@ stripe as (
     -sum(if(reporting_category in ('dispute', 'dispute_reversal'), amount, 0)) as disputed
   from {{ ref('core_stripe_transactions') }} where order_key is not null group by 1
 )
-select i.order_key, 'discount' as what, i.discount as allocated, c.discount as expected
-from items i join cms c using (order_key) where i.source_system = 'webapp' and abs(i.discount - coalesce(c.discount, 0)) > 0.01
+select i.order_key, 'discount' as what, i.discount as allocated, least(coalesce(c.discount, 0), greatest(i.list_value, 0)) as expected
+from items i join cms c using (order_key)
+where i.source_system = 'webapp' and abs(i.discount - least(coalesce(c.discount, 0), greatest(i.list_value, 0))) > 0.01
 union all
 select i.order_key, 'service_fee', i.service_fee, c.service_fee
 from items i join cms c using (order_key) where i.source_system = 'webapp' and abs(i.service_fee - coalesce(c.service_fee, 0)) > 0.01
