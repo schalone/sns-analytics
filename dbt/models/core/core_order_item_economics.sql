@@ -45,6 +45,7 @@
 -- own line_total (an archive data quirk) still produces realized_revenue = line_total and a discount
 -- that is never negative.
 --
+-- New-platform transfers need no root lookup: the replacement item is on the same order (see the bronco CTE).
 -- Transferred seats (legacy only; core_seat_transfers finds each transfer line's root and the seats it
 -- holds). The legacy site moved a seat to another event by creating a zero-total order whose parent is
 -- the original paid order, and the instructor of the class attended earns the money, so the seat and its
@@ -103,8 +104,12 @@ bronco as (
     i.event_key,
     coalesce(o.paid_at, o.created_at) as purchased_at,
     coalesce(i.quantity, 1) as seats,
-    coalesce(i.line_total, 0) as list_value,
-    coalesce(i.line_total, 0) as weight_base,
+    -- A new-platform transfer keeps the old item on the order as Transferred and adds a paid item for the
+    -- class attended, whose line value carries the money (seat and money follow the class attended, as on
+    -- the legacy site). An Expired item is likewise superseded on its order. Both are worth nothing here,
+    -- so their order's total is not counted twice; their seat is already cancelled by the ticket's status.
+    if(i.status in ('Transferred', 'Expired'), 0, coalesce(i.line_total, 0)) as list_value,
+    if(i.status in ('Transferred', 'Expired'), 0, coalesce(i.line_total, 0)) as weight_base,
     cast(null as float64) as line_discount,           -- bronco discount is order-level; allocated below
     coalesce(o.discount, 0) as order_discount,
     coalesce(o.service_fee, 0) as order_service_fee,

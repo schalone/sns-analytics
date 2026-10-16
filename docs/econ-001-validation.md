@@ -404,7 +404,9 @@ established: the archive has no redemption record and no legacy order records a 
 
 - Bronco order economics on real data. The order-level discount and service fee allocation are proven by unit
   tests only.
-- How money follows a transfer on the new platform.
+- How money follows a transfer on the new platform beyond order totals: decided 2026-10-16 (Transferred and Expired
+  items are valued at zero; the replacement item carries the money), which reconciled 305 of 309 disagreeing
+  orders to their totals. Not yet checked by hand against one transferred order's instructor payout.
 - Peer benchmarks on real data (no metros loaded).
 - Contribution after ad spend on real data (no spend loaded).
 - The hourly job's cost with the economics models (`core_stripe_transactions` to `core_bookings`) in the hourly build.

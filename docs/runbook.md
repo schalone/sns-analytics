@@ -377,12 +377,13 @@ dates or sizes an imported event differently), `assert_bronco_order_realized_mat
 order whose items do not realize its total plus gift card applied, within one cent),
 `assert_kpi_bookings_have_orders` (a booking whose purchase order, `coalesce(transfer_root_order_key,
 order_key)`, is missing from `core_orders`, so its money would drop out of `mart_daily_kpis`),
-`assert_no_unhandled_platform_transfers` (a new-platform
-ticket transfer, whose money rule is not decided yet), `assert_no_estimated_fee_on_settled_bronco` (a
-card-paid bronco booking older than two days with no Stripe charge), `assert_bronco_bookings_have_event`,
-and the two pinned-fact tests `assert_post_launch_orders_pinned` and
-`assert_post_launch_ticket_revenue_pinned` (warn until the pinned figures are confirmed after the first
-CMS backfill; then raise them to error by deleting their `config(severity='warn')` line).
+`assert_no_estimated_fee_on_settled_bronco` (a
+card-paid bronco booking older than two days with no Stripe charge) and `assert_bronco_bookings_have_event`.
+The two pinned-fact tests `assert_post_launch_orders_pinned` (5,270 orders +-1%) and
+`assert_post_launch_ticket_revenue_pinned` ($474.1k +-1%) were confirmed against the first CMS backfill on
+2026-10-16 and are error severity. New-platform transfers: the old order item stays on the order as
+`Transferred` and a paid item for the class attended is added; `core_order_item_economics` values
+`Transferred` and `Expired` items at zero, so the seat and its money follow the class attended.
 `assert_worked_bronco_order_pinned` also passes today and will warn once any new-platform booking is
 more than two days old: it asks for one bronco order to be checked by hand against Stripe
 (`scripts/econ_check_order.py --bronco <order number>`) and pinned in `assert_worked_order.sql`, after which

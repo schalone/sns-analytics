@@ -328,6 +328,44 @@ unit_tests:
         - {order_item_key: A2, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-10", seats: 1, list_value: 65, discount: 5, service_fee: 3, realized_revenue: 63, refunded_amount: 0, disputed_amount: 0, processing_fee: 2, fee_source: actual, net_distributable: 61, sns_share: 24.4, instructor_share: 36.6, is_cancelled: false}
         - {order_item_key: F1, source_system: webapp, platform_era: bronco, item_kind: ticket, event_key: E1, purchase_date: "2026-09-11", seats: 1, list_value: 50, discount: 0, service_fee: 0, realized_revenue: 50, refunded_amount: 50, disputed_amount: 0, processing_fee: 1.75, fee_source: actual, net_distributable: -1.75, sns_share: -0.7, instructor_share: -1.05, is_cancelled: false}
 
+  - name: order_item_economics_bronco_transfer_moves_money_to_class_attended
+    description: >
+      A new-platform transfer keeps the old item on the order as Transferred and adds a paid item for the
+      class attended. The Transferred item is worth nothing, so the order's 65 is counted once, on the new
+      event, and the whole Stripe fee goes with it.
+    model: core_order_item_economics
+    given:
+      - input: ref('stg_cms__orders')
+        rows:
+          - {order_key: X, source: webapp, status: Paid, created_at: "2026-09-10 14:00:00", paid_at: "2026-09-10 14:01:00", subtotal: 65, discount: 0, service_fee: 0, total: 65}
+      - input: ref('stg_cms__order_items')
+        rows:
+          - {order_item_key: X1, order_key: X, item_type: ticket, ticket_key: TX1, event_key: E1, quantity: 1, line_total: 65, status: Transferred}
+          - {order_item_key: X2, order_key: X, item_type: ticket, ticket_key: TX2, event_key: E2, quantity: 1, line_total: 65, status: Paid}
+      - input: ref('stg_cms__refunds')
+        rows: []
+      - input: ref('stg_cms__tickets')
+        rows:
+          - {ticket_key: TX1, status: Transferred}
+          - {ticket_key: TX2, status: Paid}
+      - input: ref('core_stripe_transactions')
+        rows:
+          - {txn_id: t1, type: charge, source_object: charge, order_key: X, amount: 65, fee: 2, net: 63}
+      - input: ref('stg_woo__orders')
+        rows: []
+      - input: ref('stg_woo__order_line_items')
+        rows: []
+      - input: ref('stg_woo__products')
+        rows: []
+      - input: ref('core_events')
+        rows: []
+      - input: ref('core_seat_transfers')
+        rows: []
+    expect:
+      rows:
+        - {order_item_key: X1, event_key: E1, list_value: 0, realized_revenue: 0, processing_fee: 0, net_distributable: 0, sns_share: 0, is_cancelled: true}
+        - {order_item_key: X2, event_key: E2, list_value: 65, realized_revenue: 65, processing_fee: 2, net_distributable: 63, sns_share: 25.2, is_cancelled: false}
+
   - name: order_item_economics_zero_value_order
     description: A comp order worth nothing must not divide by zero; the seat still counts; there is no card payment so no fee.
     model: core_order_item_economics
