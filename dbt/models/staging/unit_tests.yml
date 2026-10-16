@@ -16,6 +16,25 @@ unit_tests:
       rows:
         - {order_key: o1, checkout_session_key: "cccccccc-0000-0000-0000-00000000abcd", source: webapp}
 
+  - name: stg_cms__orders_parses_seven_digit_fractional_seconds
+    description: >
+      The CMS writes .NET datetime2(7) timestamps with seven fractional digits, which BigQuery's TIMESTAMP()
+      rejects; they are truncated to microseconds. Whole-second and missing values still parse.
+    model: stg_cms__orders
+    given:
+      - input: source('raw_cms', 'orders')
+        format: sql
+        rows: |
+          select 'o1' as key, timestamp '2026-09-15 00:30:56' as updated_at, timestamp '2026-09-15 00:30:56' as _loaded_at,
+            json '{"createdAt": "2026-09-15T00:30:55.8066667Z", "paidAt": "2026-09-15T00:31:02Z"}' as payload
+          union all
+          select 'o2', timestamp '2026-09-15 00:30:56', timestamp '2026-09-15 00:30:56',
+            json '{"createdAt": "2026-09-15T00:30:55.1Z", "paidAt": null}'
+    expect:
+      rows:
+        - {order_key: o1, created_at: "2026-09-15 00:30:55.806666 UTC", paid_at: "2026-09-15 00:31:02 UTC"}
+        - {order_key: o2, created_at: "2026-09-15 00:30:55.1 UTC", paid_at: null}
+
   - name: stg_cms__checkout_sessions_lowercases_key
     description: The checkout session's own key is lower-cased, like every other checkout_session_key.
     model: stg_cms__checkout_sessions

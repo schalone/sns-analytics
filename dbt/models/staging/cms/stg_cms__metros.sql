@@ -4,5 +4,5 @@ select key as metro_key, json_value(payload, '$.name') as name, json_value(paylo
   json_value(payload, '$.state') as state,
   json_value(payload, '$.centerPlace') as center_place, cast(json_value(payload, '$.centerLatitude') as float64) as center_latitude,
   cast(json_value(payload, '$.centerLongitude') as float64) as center_longitude, cast(json_value(payload, '$.radiusMiles') as int64) as radius_miles,
-  timestamp(json_value(payload, '$.createdAt')) as created_at, updated_at
+  {{ cms_timestamp('$.createdAt') }} as created_at, updated_at
 from latest
