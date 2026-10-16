@@ -397,25 +397,22 @@ one cent).
 
 ## Cost
 
-**The hourly figure below is stale.** It was measured on 2026-09-27 for an earlier hourly model set. The
-hourly build now also includes the economics models `core_stripe_transactions`, `core_customer_identity`,
-`core_seat_transfers`, `core_order_item_economics` and `core_bookings` (see "Running in the jobs" above; the
-event views, the booking curve and the ad spend allocation build daily only). This has not been re-measured.
-Do not rely on the hourly row of the table, or the $4.75/month total, for budgeting until one real hourly run
-has been measured with the query at the end of this section (summed with `sum(total_bytes_billed)` over one
-hourly run's time window, or filtered to the job's service account, rather than listed row by row).
+**Hourly re-measured 2026-10-16** after the first CMS backfill, with the economics models in the hourly
+build: one manual execution of `sns-analytics-hourly` billed 3.32 GiB over 295 queries
+(`region-us.INFORMATION_SCHEMA.JOBS_BY_PROJECT`, `user_email` = the job's service account, summed over the
+run's window). The hourly scheduler was resumed the same day. The daily row is still the 2026-09-27 figure.
 
 Spec §10 targets a few GB scanned per day and well under $5/month. Measured on 2026-09-27 from dbt's own
 `run_results.json` (`adapter_response.bytes_processed` / `bytes_billed`, summed over every model and test):
 
 | Build | Per run: processed / billed | Runs per day | Per day billed |
 |---|---|---:|---:|
-| Hourly (`--selector hourly`) -- **stale, see note above** | 0.45 GiB / 1.0 GiB | 23 | about 23 GiB |
+| Hourly (`--selector hourly`), measured 2026-10-16 | - / 3.32 GiB | 23 | about 76 GiB |
 | Daily (whole project, incremental GA4 models) | 1.9 GiB / 2.7 GiB | 1 | about 2.7 GiB |
-| **Total** | | | **about 26 GiB/day, about 780 GiB/month** |
+| **Total** | | | **about 79 GiB/day, about 2.3 TiB/month** |
 
-That is about $4.75/month at the on-demand list price of $6.25 per TiB billed, or $0 while the project stays
-inside BigQuery's free first 1 TiB per month. Assumptions: billed bytes include BigQuery's 10 MiB minimum per table per query, which is why most of the
+That is about $14/month at the on-demand list price of $6.25 per TiB billed, less BigQuery's free first 1 TiB
+per month (shared with every other query in the project). Assumptions: billed bytes include BigQuery's 10 MiB minimum per table per query, which is why most of the
 hourly run's billed bytes (about 110 small queries) exceed what it processes. `raw_cms` and `raw_spend` are
 empty today; the CMS tables will add their own size to every hourly run once loaded (the order tables are
 expected in the tens of MB). `core_sessions` (894 MiB, 2.4M rows) is read by the daily build's
