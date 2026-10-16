@@ -103,6 +103,38 @@ Stripe has one charge, on the root. One of 14 such orders in 2025.
 The root booking shows `seats_purchased` 2, `seats_transferred_out` 1, one seat; the transfer booking has
 `transfer_root_order_key = 'woo-373065'` and one seat.
 
+### New platform (bronco), checked 2026-10-16
+
+Chosen by queries on `core_order_item_economics` after the first CMS backfill and checked against Stripe with
+`scripts/econ_check_order.py --bronco <order number>`. The new platform has charged no service fee on any
+order, and only 11 of 6,731 orders carry a discount, so the discounted order below is the one two-seat,
+settled, unrefunded order with a discount. Both are pinned in `dbt/tests/core/assert_worked_order.sql`.
+
+**SNS-26-017929: an order-level discount split across seats.** Business date 2026-08-18, two ticket lines
+at 50.00, 70.00 order discount, 30.00 paid, no refund.
+
+| Figure | From Stripe, by hand | From core_bookings | Difference |
+|---|---|---|---|
+| Charged / realized | 30.00 | 15.00 + 15.00 = 30.00 | 0.00 |
+| Refunded | 0.00 | 0.00 | 0.00 |
+| Stripe fee | 1.17 | 0.585 + 0.585 = 1.17 | 0.00 |
+| Net distributable | 30.00 - 0 - 1.17 = 28.83 | 28.83 | 0.00 |
+| S&S share (40%) | 11.532 | 11.532 | 0.00 |
+| Instructor share (60%) | 17.298 | 17.298 | 0.00 |
+
+**SNS-26-018542: a new-platform transfer.** Business date 2026-08-28, one seat at 65.00. The CMS kept the
+original item (event 34063b67-...) as `Transferred` and added a paid item for event eb464e8d-..., whose ticket
+is `Used`. One of 111 settled, unrefunded single-transfer orders in August and September.
+
+| Figure | From Stripe, by hand | Class transferred away from | Class attended | Difference |
+|---|---|---|---|---|
+| Seats | 1 | 0 (cancelled) | 1 | 0 |
+| Charged / realized | 65.00 | 0.00 | 65.00 | 0.00 |
+| Stripe fee | 2.19 | 0.00 | 2.19 | 0.00 |
+| Net distributable | 62.81 | 0.00 | 62.81 | 0.00 |
+| S&S share (40%) | 25.124 | 0.00 | 25.124 | 0.00 |
+| Instructor share (60%) | 37.686 | 0.00 | 37.686 | 0.00 |
+
 ## Worked events
 
 Both events were counted by hand from the archive tables (`woo.orders`, `woo.order_line_items`,
@@ -227,7 +259,7 @@ Bookings vs `core_orders` for the new platform could not be compared: no bronco 
 | 2 | At least 98% of card-paid bookings in both eras carry an actual Stripe fee | Cannot be evaluated yet | No bronco booking exists. Legacy era: every year from 2019 is at least 99.81% (the lowest, 2019), and only 14 legacy bookings in all use the estimated fee. |
 | 3 | At least 98% of orders from 2019 resolve to a customer, and cross-era customers are one row | Not met | 2019: 96.55%, 2020: 97.58% (every later year is above 99%). The shortfall is guest orders with no Stripe charge: 67 of 2019's 70 and all 36 of 2020's unresolved orders have gross revenue 0. It is fixed archive data. The cross-era half cannot be evaluated: no bronco customer exists. |
 | 4 | No email, name, phone, street address or card detail in any written dataset | Met, for what was checked | Checked: (a) `assert_no_pii_columns` matches every column NAME in the four datasets dbt writes (staging, core, mart, ops) against a pattern for email, phone, name, street, address, card, last4, purchaser and attendee, and finds none (two gift-card columns, an amount and a record GUID, match through "card" and are exempt by exact name); (b) `assert_no_email_in_raw_stripe` scans every payload in the four `raw_stripe` tables for `@` and finds none. Not checked: column VALUES in the dbt datasets, and values in the other raw datasets (`raw_cms`, `raw_gsc`, `raw_spend`). Billing city, state and ZIP are stored on orders; they are not on the criterion's list. |
-| 5 | The worked order and worked event tests pass | Cannot be evaluated yet | The spec asks for a bronco worked order and none can be chosen until bronco orders are loaded. Legacy era: `assert_worked_order` (three legacy orders) and `assert_worked_event` (two events) pass; `assert_worked_bronco_order_pinned` will warn once a bronco booking is two days old until one is checked and pinned. |
+| 5 | The worked order and worked event tests pass | Met (2026-10-16) | `assert_worked_order` pins three legacy orders and two bronco orders (SNS-26-017929, a discounted purchase; SNS-26-018542, a transfer), all checked by hand against Stripe; `assert_worked_event` (two events) passes. |
 
 ## Legacy fee estimate
 
@@ -250,7 +282,7 @@ WARN 6, ERROR 0, of 341. Five warnings are ones the runbook already expects; the
 | `assert_stripe_charges_carry_a_join_key` | 1 | 2016: 204 of 242 charges carry no order reference (fixed archive data). |
 | `assert_identity_coverage` | 2 | Legacy 2019 (96.55%) and 2020 (97.58%) resolved identity, below 98%. |
 
-`assert_worked_bronco_order_pinned` passes today and will warn once a bronco booking is more than two days old.
+`assert_worked_bronco_order_pinned` was retired on 2026-10-16 once two bronco orders were pinned.
 The legacy totals above were re-queried after the build (realized 9,633,384.43, disputed 2,737.00, S&S
 3,644,157.08, 136,122 seats).
 
@@ -402,11 +434,8 @@ established: the archive has no redemption record and no legacy order records a 
 
 ## Not yet validated
 
-- Bronco order economics on real data. The order-level discount and service fee allocation are proven by unit
-  tests only.
-- How money follows a transfer on the new platform beyond order totals: decided 2026-10-16 (Transferred and Expired
-  items are valued at zero; the replacement item carries the money), which reconciled 305 of 309 disagreeing
-  orders to their totals. Not yet checked by hand against one transferred order's instructor payout.
+- The bronco service fee allocation on real data: proven by unit tests only, because no new-platform order has
+  charged a service fee yet.
 - Peer benchmarks on real data (no metros loaded).
 - Contribution after ad spend on real data (no spend loaded).
 - The hourly job's cost with the economics models (`core_stripe_transactions` to `core_bookings`) in the hourly build.

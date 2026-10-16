@@ -384,10 +384,8 @@ The two pinned-fact tests `assert_post_launch_orders_pinned` (5,270 orders +-1%)
 2026-10-16 and are error severity. New-platform transfers: the old order item stays on the order as
 `Transferred` and a paid item for the class attended is added; `core_order_item_economics` values
 `Transferred` and `Expired` items at zero, so the seat and its money follow the class attended.
-`assert_worked_bronco_order_pinned` also passes today and will warn once any new-platform booking is
-more than two days old: it asks for one bronco order to be checked by hand against Stripe
-(`scripts/econ_check_order.py --bronco <order number>`) and pinned in `assert_worked_order.sql`, after which
-the warning test is deleted (see `docs/econ-001-validation.md`).
+Two new-platform orders (a discounted purchase and a transfer) were checked by hand against Stripe on
+2026-10-16 and pinned in `assert_worked_order.sql` (see `docs/econ-001-validation.md`).
 
 Error-severity tests that pass today only because no new-platform data is loaded:
 `assert_bronco_fee_match_rate` (fails when, in a month with at least 50 card-paid bronco bookings older than
