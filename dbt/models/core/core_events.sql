@@ -5,9 +5,12 @@
 -- seats_sold counts ticket lines as sold and does not remove seats later transferred to another class;
 -- use core_event_economics.seats_sold.
 --
--- Legacy-only events, capacity/price fallback. A CMS event keeps its own capacity, falling
--- back to the archive's ticket-product capacity (matched on wordpress_source_id) when the CMS value
--- is null or zero. Its ticket_price falls back the same way when null, or when zero and the archive
+-- Capacity/price fallback. An imported legacy-era CMS event (it has a wordpress_source_id and is dated before
+-- launch, or undated) takes the archive's ticket-product capacity, which is what the class sold against, and
+-- falls back to the CMS value only when the archive has none: on 2026-10-16, 1,180 of 9,684 imported events
+-- carried a different CMS capacity (e.g. WordPress event 259204: 10 in the CMS, 17 in the archive). Every other
+-- CMS event keeps its own capacity, falling back to the archive's when the CMS value is null or zero.
+-- Its ticket_price falls back the same way when null, or when zero and the archive
 -- has a price for that event; a CMS price of exactly 0 with no archive price stays 0 (a genuinely
 -- free event, not an unset one). Its seats_sold adds the archive's own ticket-line seats on top of
 -- its CMS ticket count, which counts only tickets on new-platform ('webapp') orders. An event the CMS never imported is built entirely from the archive and keyed
@@ -79,13 +82,19 @@ cms_rows as (
     coalesce(e.end_at_utc, {{ event_instant('e.event_date', "coalesce(safe.parse_time('%H:%M:%S', e.end_time), time '00:00:00')", 'e.time_zone') }}) as end_at,
     coalesce(e.time_zone, 'America/New_York') as time_zone,
     e.venue_key, coalesce(e.metro_key, v.metro_key) as metro_key, e.instructor_key, e.category, e.event_type, e.theme, e.status,
-    coalesce(nullif(e.capacity, 0), w.capacity) as capacity,
+    case when legacy_import then coalesce(w.capacity, nullif(e.capacity, 0))
+         else coalesce(nullif(e.capacity, 0), w.capacity) end as capacity,
     coalesce(nullif(e.ticket_price, 0), w.ticket_price, e.ticket_price) as ticket_price,
     e.is_virtual, e.no_tickets, e.external_ticket_url, e.wordpress_source_id, e.updated_at,
     coalesce(s.seats_sold, 0) + coalesce(w.seats, 0) as seats_sold,
     'cms' as event_source,
-    case when nullif(e.capacity, 0) is not null then 'cms' when w.capacity is not null then 'woo_products' else 'none' end as capacity_source
-  from e
+    case when legacy_import and w.capacity is not null then 'woo_products'
+         when nullif(e.capacity, 0) is not null then 'cms' when w.capacity is not null then 'woo_products' else 'none' end as capacity_source
+  from (
+    select *, wordpress_source_id is not null
+      and (event_date is null or {{ platform_era_of_date('event_date') }} = 'legacy_event_tickets') as legacy_import
+    from e
+  ) e
   left join {{ ref('core_venues') }} v using (venue_key)
   left join sold s using (event_key)
   left join woo_event w on w.woo_event_id = e.wordpress_source_id
