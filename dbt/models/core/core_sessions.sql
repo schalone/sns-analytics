@@ -36,6 +36,7 @@ with ev as (
     {{ unset_to_null('session_traffic_source_last_click.manual_campaign.medium') }} as lc_medium,
     {{ unset_to_null('session_traffic_source_last_click.manual_campaign.campaign_name') }} as lc_campaign,
     session_traffic_source_last_click.google_ads_campaign.campaign_id as lc_google_ads_campaign_id,
+    {{ unset_to_null('session_traffic_source_last_click.google_ads_campaign.campaign_name') }} as lc_google_ads_campaign_name,
     collected_traffic_source.gclid as gclid,
     device.category as device_category, geo.country, geo.region, geo.city
   from {{ source('ga4', 'events') }}
@@ -46,7 +47,7 @@ with ev as (
     and _table_suffix >= format_date('%Y%m%d', date('{{ var("ga4_start_date") }}'))
   {% endif %}
 ),
-sess as (
+agg as (
   select
     concat(user_pseudo_id, '.', cast(ga_session_id as string)) as session_key, user_pseudo_id,
     timestamp_micros(min(event_timestamp)) as session_start_at, min(event_date) as session_date,
@@ -55,12 +56,23 @@ sess as (
     coalesce(max(lc_medium), array_agg(ep_medium ignore nulls order by event_timestamp limit 1)[safe_offset(0)]) as raw_medium,
     coalesce(max(lc_campaign), array_agg(ep_campaign ignore nulls order by event_timestamp limit 1)[safe_offset(0)]) as campaign,
     max(lc_google_ads_campaign_id) as google_ads_campaign_id,
+    max(lc_google_ads_campaign_name) as google_ads_campaign_name,
     max(gclid) as gclid,
     max(session_engaged) = 1 as engaged,
     countif(event_name = 'page_view') as page_views,
     any_value(device_category) as device_category, any_value(country) as country, any_value(region) as region, any_value(city) as city
   from ev where ga_session_id is not null
   group by 1, 2
+),
+sess as (
+  -- An auto-tagged Google Ads click carries a gclid but no UTMs, so GA4's manual fields fall back to
+  -- the referrer and report it as google / organic / '(organic)' (or leave them unset). Relabel those
+  -- as google / cpc with the linked Ads campaign name; a session with its own UTM medium is left alone.
+  select * except (raw_source, raw_medium, campaign, google_ads_campaign_name),
+    if(is_untagged_ad_click, 'google', raw_source) as raw_source,
+    if(is_untagged_ad_click, 'cpc', raw_medium) as raw_medium,
+    if(is_untagged_ad_click, google_ads_campaign_name, campaign) as campaign
+  from (select *, gclid is not null and coalesce(lower(raw_medium), 'organic') = 'organic' as is_untagged_ad_click from agg)
 ),
 flagged as (
   -- Final-review I11b/c: phantom referrals are every source in var('phantom_referral_sources') (default
